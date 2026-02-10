@@ -278,6 +278,11 @@ class CacheKeys:
     """Cache key builders for consistent naming."""
     
     @staticmethod
+    def user_auth(user_id: str) -> str:
+        """Cached user auth lookup (User + Subscription from dependencies)."""
+        return f"cache:user:auth:{user_id}"
+
+    @staticmethod
     def profile(user_id: str) -> str:
         """User profile cache key."""
         return f"cache:profile:{user_id}"
@@ -373,6 +378,7 @@ class CacheInvalidator:
     async def on_profile_update(user_id: str) -> None:
         """Invalidate caches when profile is updated."""
         await CacheManager.delete(CacheKeys.profile(user_id))
+        await CacheManager.delete(CacheKeys.user_auth(user_id))
     
     @staticmethod
     async def on_subscription_change(user_id: str) -> None:
@@ -380,3 +386,4 @@ class CacheInvalidator:
         await CacheManager.delete(CacheKeys.subscription(user_id))
         await CacheManager.delete(CacheKeys.subscription_status(user_id))
         await CacheManager.delete(CacheKeys.profile(user_id))
+        await CacheManager.delete(CacheKeys.user_auth(user_id))

@@ -3,9 +3,14 @@ Database Session Management
 ===========================
 
 Provides async database session factory and dependency injection.
+
+Includes ``LazyDB`` — a lightweight wrapper that defers opening a
+real DB session until the first call to ``await lazy.get()``.  This
+is used by cache-first endpoints so that a pure cache-hit path pays
+**zero** DB overhead.
 """
 
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Optional
 
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -90,6 +95,60 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             raise
         finally:
             await session.close()
+
+
+class LazyDB:
+    """
+    Lazy database session wrapper.
+
+    No DB connection is opened until ``await lazy.get()`` is called.
+    If ``get()`` is never called the cleanup is a no-op — zero overhead.
+    """
+
+    def __init__(self) -> None:
+        self._session: Optional[AsyncSession] = None
+
+    async def get(self) -> AsyncSession:
+        """Return (and lazily create) the underlying session."""
+        if self._session is None:
+            factory = get_session_factory()
+            self._session = factory()
+        return self._session
+
+    async def close(self, *, commit: bool = True) -> None:
+        """Commit/rollback and close the session if it was ever opened."""
+        if self._session is not None:
+            try:
+                if commit:
+                    await self._session.commit()
+                else:
+                    await self._session.rollback()
+            finally:
+                await self._session.close()
+                self._session = None
+
+
+async def get_lazy_db() -> AsyncGenerator[LazyDB, None]:
+    """
+    FastAPI dependency that provides a **lazy** DB session.
+
+    Usage::
+
+        async def my_handler(lazy_db: Annotated[LazyDB, Depends(get_lazy_db)]):
+            # Only opens a real DB connection if/when needed:
+            db = await lazy_db.get()
+
+    On a pure cache-hit path ``lazy_db.get()`` is never called, so the
+    request pays zero DB overhead.
+    """
+    lazy = LazyDB()
+    try:
+        yield lazy
+    except Exception:
+        await lazy.close(commit=False)
+        raise
+    else:
+        await lazy.close(commit=True)
 
 
 async def init_db() -> None:

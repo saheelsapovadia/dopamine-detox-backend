@@ -80,7 +80,15 @@ class TaskCacheService:
             raw: dict[str, str] = await client.hgetall(key)
             if not raw:
                 return None  # cache miss – caller will hydrate
-            tasks = [json.loads(v) for v in raw.values()]
+            # Parse values, skipping the __empty__ sentinel and any
+            # non-dict entries (e.g. meta leftovers).
+            tasks: list[dict] = []
+            for field_key, v in raw.items():
+                if field_key == "__empty__":
+                    continue
+                parsed = json.loads(v)
+                if isinstance(parsed, dict):
+                    tasks.append(parsed)
             # Sort: high priority first, then by order_index
             _priority_order = {"high": 0, "medium": 1, "low": 2}
             tasks.sort(
@@ -129,9 +137,11 @@ class TaskCacheService:
             raw: dict[str, str] = await client.hgetall(key)
             if not raw:
                 return None
-            for v in raw.values():
+            for field_key, v in raw.items():
+                if field_key == "__empty__":
+                    continue
                 task = json.loads(v)
-                if task.get("priority") == "high":
+                if isinstance(task, dict) and task.get("priority") == "high":
                     return task
             return None
         except Exception as exc:
@@ -208,6 +218,7 @@ class TaskCacheService:
 
             pipe = client.pipeline(transaction=False)
             pipe.hset(dkey, task_id, json.dumps(task_dict, default=str))
+            pipe.hdel(dkey, "__empty__")  # remove sentinel if present
             pipe.hincrby(mkey, "total", 1)
             if task_dict.get("status") == "completed":
                 pipe.hincrby(mkey, "completed", 1)
@@ -240,6 +251,7 @@ class TaskCacheService:
             pipe = client.pipeline(transaction=False)
             for t in tasks:
                 pipe.hset(dkey, t["id"], json.dumps(t, default=str))
+            pipe.hdel(dkey, "__empty__")  # remove sentinel if present
             # Bump meta counters
             completed = sum(1 for t in tasks if t.get("status") == "completed")
             pipe.hincrby(mkey, "total", len(tasks))

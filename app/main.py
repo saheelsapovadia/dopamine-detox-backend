@@ -18,6 +18,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from app.config import settings
 from app.db.session import init_db, close_db
 from app.services.cache import init_redis, close_redis
+from app.services.sync_worker import TaskSyncWorker
 from app.core.errors import setup_exception_handlers
 
 
@@ -64,6 +65,9 @@ class NewRelicTransactionMiddleware(BaseHTTPMiddleware):
         return response
 
 
+_sync_worker: TaskSyncWorker | None = None
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """
@@ -72,7 +76,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     Handles startup and shutdown events for:
     - Database connection
     - Redis connection
+    - Task sync background worker (write-behind to PostgreSQL)
     """
+    global _sync_worker
+
     # Startup
     print("🚀 Starting Dopamine Detox API...")
     
@@ -95,10 +102,20 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except Exception as e:
         print(f"⚠️ Redis connection failed: {e}")
     
+    # Start task sync worker (write-behind cache → PostgreSQL)
+    try:
+        _sync_worker = TaskSyncWorker()
+        await _sync_worker.start()
+    except Exception as e:
+        print(f"⚠️ Task sync worker failed to start: {e}")
+        _sync_worker = None
+    
     yield
     
     # Shutdown
     print("🛑 Shutting down Dopamine Detox API...")
+    if _sync_worker is not None:
+        await _sync_worker.stop()
     await close_db()
     await close_redis()
 
