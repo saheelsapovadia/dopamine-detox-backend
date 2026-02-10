@@ -1,0 +1,2208 @@
+{
+	"info": {
+		"_postman_id": "detox-dopamine-api-collection",
+		"name": "Detox Dopamine API",
+		"description": "Complete API collection for the Detox Dopamine backend application.\n\n## Overview\nThis collection contains all endpoints for the Detox Dopamine app, a digital wellness application that helps users manage their dopamine habits through task management, journaling, and progress tracking.\n\n## Authentication\nMost endpoints require JWT authentication. Use the Login or Register endpoint first to obtain tokens, which will be automatically saved to environment variables.\n\n## Base URL\nDefault: `http://localhost:8000`\n\n## Quick Start\n1. Set up the environment variables\n2. Call Register or Login to get authentication tokens\n3. Use other endpoints with automatic Bearer token authentication",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:8000",
+			"type": "string"
+		},
+		{
+			"key": "access_token",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "refresh_token",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "user_id",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "task_id",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "entry_id",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "plan_id",
+			"value": "",
+			"type": "string"
+		}
+	],
+	"auth": {
+		"type": "bearer",
+		"bearer": [
+			{
+				"key": "token",
+				"value": "{{access_token}}",
+				"type": "string"
+			}
+		]
+	},
+	"item": [
+		{
+			"name": "Health Check",
+			"description": "System health and status endpoints for monitoring the API availability.",
+			"item": [
+				{
+					"name": "Root - API Information",
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/",
+							"host": ["{{base_url}}"],
+							"path": [""]
+						},
+						"description": "Returns basic API information including version, name, and documentation links."
+					},
+					"response": [
+						{
+							"name": "Success Response",
+							"originalRequest": {
+								"method": "GET",
+								"url": {
+									"raw": "{{base_url}}/",
+									"host": ["{{base_url}}"],
+									"path": [""]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"body": "{\n  \"name\": \"Detox Dopamine API\",\n  \"version\": \"1.0.0\",\n  \"description\": \"Backend API for the Detox Dopamine mobile app\",\n  \"docs_url\": \"/docs\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Health Check",
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/health",
+							"host": ["{{base_url}}"],
+							"path": ["health"]
+						},
+						"description": "Health check endpoint to verify the API is running and database connections are healthy."
+					},
+					"response": [
+						{
+							"name": "Healthy Response",
+							"originalRequest": {
+								"method": "GET",
+								"url": {
+									"raw": "{{base_url}}/health",
+									"host": ["{{base_url}}"],
+									"path": ["health"]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"body": "{\n  \"status\": \"healthy\",\n  \"database\": \"connected\",\n  \"redis\": \"connected\",\n  \"timestamp\": \"2024-01-15T10:30:00Z\"\n}"
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "Authentication",
+			"description": "User authentication endpoints including registration, login, logout, and token refresh.\n\n## Token Flow\n1. Register or Login to receive access and refresh tokens\n2. Access token expires in 24 hours\n3. Use refresh token endpoint to get new access token\n4. Refresh token expires in 30 days",
+			"item": [
+				{
+					"name": "Register",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 201 || pm.response.code === 200) {",
+									"    var jsonData = pm.response.json();",
+									"    if (jsonData.data && jsonData.data.tokens) {",
+									"        pm.collectionVariables.set('access_token', jsonData.data.tokens.access_token);",
+									"        pm.collectionVariables.set('refresh_token', jsonData.data.tokens.refresh_token);",
+									"    }",
+									"    if (jsonData.data && jsonData.data.user) {",
+									"        pm.collectionVariables.set('user_id', jsonData.data.user.user_id);",
+									"    }",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"john.doe@example.com\",\n  \"password\": \"SecureP@ss123\",\n  \"full_name\": \"John Doe\",\n  \"timezone\": \"America/New_York\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/auth/register",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "auth", "register"]
+						},
+						"description": "Register a new user account.\n\n## Request Body\n- `email` (required): Valid email address\n- `password` (required): Minimum 8 characters with complexity requirements\n- `full_name` (optional): User's display name\n- `timezone` (optional): IANA timezone string, defaults to UTC\n\n## Response\nReturns user info, subscription details (starts as FREE tier), and authentication tokens."
+					},
+					"response": [
+						{
+							"name": "Success - User Created",
+							"originalRequest": {
+								"method": "POST",
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"email\": \"john.doe@example.com\",\n  \"password\": \"SecureP@ss123\",\n  \"full_name\": \"John Doe\",\n  \"timezone\": \"America/New_York\"\n}"
+								},
+								"url": {
+									"raw": "{{base_url}}/api/v1/auth/register",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "auth", "register"]
+								}
+							},
+							"status": "Created",
+							"code": 201,
+							"_postman_previewlanguage": "json",
+							"body": "{\n  \"success\": true,\n  \"data\": {\n    \"user\": {\n      \"user_id\": \"550e8400-e29b-41d4-a716-446655440000\",\n      \"email\": \"john.doe@example.com\",\n      \"full_name\": \"John Doe\",\n      \"created_at\": \"2024-01-15T10:30:00Z\"\n    },\n    \"subscription\": {\n      \"tier\": \"FREE\",\n      \"status\": \"ACTIVE\",\n      \"expires_at\": null,\n      \"feature_limits\": {\n        \"journals_per_month\": 10,\n        \"ai_insights\": false,\n        \"voice_transcription\": false\n      }\n    },\n    \"tokens\": {\n      \"access_token\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...\",\n      \"refresh_token\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...\",\n      \"token_type\": \"bearer\",\n      \"expires_in\": 86400\n    }\n  },\n  \"message\": \"User registered successfully\"\n}"
+						},
+						{
+							"name": "Error - Email Already Exists",
+							"originalRequest": {
+								"method": "POST",
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"email\": \"existing@example.com\",\n  \"password\": \"SecureP@ss123\"\n}"
+								},
+								"url": {
+									"raw": "{{base_url}}/api/v1/auth/register",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "auth", "register"]
+								}
+							},
+							"status": "Conflict",
+							"code": 409,
+							"_postman_previewlanguage": "json",
+							"body": "{\n  \"success\": false,\n  \"error\": {\n    \"code\": \"AUTH_003\",\n    \"message\": \"User with this email already exists\"\n  }\n}"
+						}
+					]
+				},
+				{
+					"name": "Login",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"    var jsonData = pm.response.json();",
+									"    if (jsonData.data && jsonData.data.tokens) {",
+									"        pm.collectionVariables.set('access_token', jsonData.data.tokens.access_token);",
+									"        pm.collectionVariables.set('refresh_token', jsonData.data.tokens.refresh_token);",
+									"    }",
+									"    if (jsonData.data && jsonData.data.user) {",
+									"        pm.collectionVariables.set('user_id', jsonData.data.user.user_id);",
+									"    }",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"john.doe@example.com\",\n  \"password\": \"SecureP@ss123\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/auth/login",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "auth", "login"]
+						},
+						"description": "Authenticate user with email and password.\n\n## Request Body\n- `email` (required): Registered email address\n- `password` (required): User's password\n\n## Response\nReturns user info, current subscription details, and fresh authentication tokens.\n\n## Auto-save\nTokens are automatically saved to collection variables for use in subsequent requests."
+					},
+					"response": [
+						{
+							"name": "Success - Login",
+							"originalRequest": {
+								"method": "POST",
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"email\": \"john.doe@example.com\",\n  \"password\": \"SecureP@ss123\"\n}"
+								},
+								"url": {
+									"raw": "{{base_url}}/api/v1/auth/login",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "auth", "login"]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"body": "{\n  \"success\": true,\n  \"data\": {\n    \"user\": {\n      \"user_id\": \"550e8400-e29b-41d4-a716-446655440000\",\n      \"email\": \"john.doe@example.com\",\n      \"full_name\": \"John Doe\",\n      \"created_at\": \"2024-01-15T10:30:00Z\"\n    },\n    \"subscription\": {\n      \"tier\": \"MONTHLY\",\n      \"status\": \"ACTIVE\",\n      \"expires_at\": \"2024-02-15T10:30:00Z\",\n      \"feature_limits\": {\n        \"journals_per_month\": -1,\n        \"ai_insights\": true,\n        \"voice_transcription\": true\n      }\n    },\n    \"tokens\": {\n      \"access_token\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...\",\n      \"refresh_token\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...\",\n      \"token_type\": \"bearer\",\n      \"expires_in\": 86400\n    }\n  },\n  \"message\": \"Login successful\"\n}"
+						},
+						{
+							"name": "Error - Invalid Credentials",
+							"originalRequest": {
+								"method": "POST",
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"email\": \"john.doe@example.com\",\n  \"password\": \"wrongpassword\"\n}"
+								},
+								"url": {
+									"raw": "{{base_url}}/api/v1/auth/login",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "auth", "login"]
+								}
+							},
+							"status": "Unauthorized",
+							"code": 401,
+							"_postman_previewlanguage": "json",
+							"body": "{\n  \"success\": false,\n  \"error\": {\n    \"code\": \"AUTH_001\",\n    \"message\": \"Invalid email or password\"\n  }\n}"
+						}
+					]
+				},
+				{
+					"name": "Logout",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/auth/logout",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "auth", "logout"]
+						},
+						"description": "Logout the current user.\n\n## Note\nThis is a client-side logout. The server does not maintain token blacklists. Clients should discard tokens after calling this endpoint."
+					},
+					"response": [
+						{
+							"name": "Success - Logged Out",
+							"originalRequest": {
+								"method": "POST",
+								"url": {
+									"raw": "{{base_url}}/api/v1/auth/logout",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "auth", "logout"]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"body": "{\n  \"success\": true,\n  \"message\": \"Logged out successfully\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Refresh Token",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"    var jsonData = pm.response.json();",
+									"    if (jsonData.data) {",
+									"        pm.collectionVariables.set('access_token', jsonData.data.access_token);",
+									"        if (jsonData.data.refresh_token) {",
+									"            pm.collectionVariables.set('refresh_token', jsonData.data.refresh_token);",
+									"        }",
+									"    }",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"refresh_token\": \"{{refresh_token}}\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/auth/refresh-token",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "auth", "refresh-token"]
+						},
+						"description": "Get a new access token using a valid refresh token.\n\n## Request Body\n- `refresh_token` (required): Valid refresh token from login/register\n\n## Response\nReturns a new access token. The refresh token may also be rotated.\n\n## Token Expiration\n- Access token: 24 hours\n- Refresh token: 30 days"
+					},
+					"response": [
+						{
+							"name": "Success - Token Refreshed",
+							"originalRequest": {
+								"method": "POST",
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"refresh_token\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...\"\n}"
+								},
+								"url": {
+									"raw": "{{base_url}}/api/v1/auth/refresh-token",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "auth", "refresh-token"]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"body": "{\n  \"success\": true,\n  \"data\": {\n    \"access_token\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...\",\n    \"refresh_token\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...\",\n    \"token_type\": \"bearer\",\n    \"expires_in\": 86400\n  },\n  \"message\": \"Token refreshed successfully\"\n}"
+						},
+						{
+							"name": "Error - Invalid Refresh Token",
+							"originalRequest": {
+								"method": "POST",
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"refresh_token\": \"invalid_token\"\n}"
+								},
+								"url": {
+									"raw": "{{base_url}}/api/v1/auth/refresh-token",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "auth", "refresh-token"]
+								}
+							},
+							"status": "Unauthorized",
+							"code": 401,
+							"_postman_previewlanguage": "json",
+							"body": "{\n  \"success\": false,\n  \"error\": {\n    \"code\": \"AUTH_002\",\n    \"message\": \"Invalid or expired refresh token\"\n  }\n}"
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "Profile",
+			"description": "User profile management endpoints for viewing and updating user information, progress statistics, and activity summaries.",
+			"item": [
+				{
+					"name": "Get Profile",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/profile",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "profile"]
+						},
+						"description": "Get the complete user profile including user info, subscription details, progress statistics, triggers, and preferences."
+					},
+					"response": [
+						{
+							"name": "Success - Full Profile",
+							"originalRequest": {
+								"method": "GET",
+								"url": {
+									"raw": "{{base_url}}/api/v1/profile",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "profile"]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"body": "{\n  \"success\": true,\n  \"data\": {\n    \"user\": {\n      \"user_id\": \"550e8400-e29b-41d4-a716-446655440000\",\n      \"email\": \"john.doe@example.com\",\n      \"full_name\": \"John Doe\",\n      \"created_at\": \"2024-01-15T10:30:00Z\",\n      \"timezone\": \"America/New_York\",\n      \"onboarding_completed\": true,\n      \"avatar_url\": null\n    },\n    \"subscription\": {\n      \"tier\": \"MONTHLY\",\n      \"status\": \"ACTIVE\",\n      \"started_at\": \"2024-01-15T10:30:00Z\",\n      \"expires_at\": \"2024-02-15T10:30:00Z\",\n      \"auto_renew\": true,\n      \"revenuecat_subscriber_id\": \"rc_123456789\"\n    },\n    \"progress\": {\n      \"total_tasks_completed\": 47,\n      \"total_days_active\": 15,\n      \"current_focus_streak\": 7,\n      \"longest_focus_streak\": 12,\n      \"total_journal_entries\": 10,\n      \"last_active_date\": \"2024-01-30\"\n    },\n    \"triggers\": [\n      {\n        \"trigger_id\": \"660e8400-e29b-41d4-a716-446655440001\",\n        \"activity_name\": \"Instagram scrolling\",\n        \"category\": \"SOCIAL_MEDIA\",\n        \"is_active\": true\n      },\n      {\n        \"trigger_id\": \"660e8400-e29b-41d4-a716-446655440002\",\n        \"activity_name\": \"YouTube binge watching\",\n        \"category\": \"VIDEO\",\n        \"is_active\": true\n      }\n    ],\n    \"preferences\": {\n      \"notifications_enabled\": true,\n      \"daily_reminder_time\": \"09:00\",\n      \"evening_reflection_time\": \"21:00\",\n      \"voice_language\": \"en-US\"\n    }\n  }\n}"
+						}
+					]
+				},
+				{
+					"name": "Update Profile",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"full_name\": \"John Smith\",\n  \"timezone\": \"America/Los_Angeles\",\n  \"preferences\": {\n    \"notifications_enabled\": true,\n    \"daily_reminder_time\": \"08:00\",\n    \"evening_reflection_time\": \"20:00\",\n    \"voice_language\": \"en-US\"\n  }\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/profile",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "profile"]
+						},
+						"description": "Update user profile information including name, timezone, and notification preferences.\n\n## Request Body\n- `full_name` (optional): User's display name\n- `timezone` (optional): IANA timezone string\n- `preferences` (optional): Notification and language preferences"
+					},
+					"response": [
+						{
+							"name": "Success - Profile Updated",
+							"originalRequest": {
+								"method": "PUT",
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"full_name\": \"John Smith\",\n  \"timezone\": \"America/Los_Angeles\"\n}"
+								},
+								"url": {
+									"raw": "{{base_url}}/api/v1/profile",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "profile"]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"body": "{\n  \"success\": true,\n  \"data\": {\n    \"user_id\": \"550e8400-e29b-41d4-a716-446655440000\",\n    \"email\": \"john.doe@example.com\",\n    \"full_name\": \"John Smith\",\n    \"timezone\": \"America/Los_Angeles\",\n    \"onboarding_completed\": true\n  },\n  \"message\": \"Profile updated successfully\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Get Progress Statistics",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/profile/progress",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "profile", "progress"]
+						},
+						"description": "Get user's progress statistics including task completion counts, streak information, and activity metrics."
+					},
+					"response": [
+						{
+							"name": "Success - Progress Stats",
+							"originalRequest": {
+								"method": "GET",
+								"url": {
+									"raw": "{{base_url}}/api/v1/profile/progress",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "profile", "progress"]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"body": "{\n  \"success\": true,\n  \"data\": {\n    \"total_tasks_completed\": 47,\n    \"total_days_active\": 15,\n    \"current_focus_streak\": 7,\n    \"longest_focus_streak\": 12,\n    \"total_journal_entries\": 10,\n    \"last_active_date\": \"2024-01-30\"\n  }\n}"
+						}
+					]
+				},
+				{
+					"name": "Get Activity Summary",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/profile/activity-summary",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "profile", "activity-summary"]
+						},
+						"description": "Get detailed activity summary including today's task statistics and recent check-in history."
+					},
+					"response": [
+						{
+							"name": "Success - Activity Summary",
+							"originalRequest": {
+								"method": "GET",
+								"url": {
+									"raw": "{{base_url}}/api/v1/profile/activity-summary",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "profile", "activity-summary"]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"body": "{\n  \"success\": true,\n  \"data\": {\n    \"today\": {\n      \"tasks_completed\": 3,\n      \"tasks_total\": 5,\n      \"completion_percentage\": 60,\n      \"journaled\": true\n    },\n    \"recent_checkins\": [\n      {\n        \"date\": \"2024-01-30\",\n        \"status\": \"COMPLETED\",\n        \"completion_icon\": \"✅\"\n      },\n      {\n        \"date\": \"2024-01-29\",\n        \"status\": \"COMPLETED\",\n        \"completion_icon\": \"✅\"\n      },\n      {\n        \"date\": \"2024-01-28\",\n        \"status\": \"PLANNED\",\n        \"completion_icon\": \"📝\"\n      }\n    ],\n    \"streak_message\": \"You're on a 7-day streak! Keep it up!\"\n  }\n}"
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "Tasks",
+			"description": "Task management endpoints for creating, updating, completing tasks, and daily planning with voice input.\n\n## Task Categories\n- `NON_NEGOTIABLE`: Must-do tasks for the day\n- `IMPORTANT`: High priority tasks\n- `OPTIONAL`: Nice-to-have tasks",
+			"item": [
+				{
+					"name": "Get Today's Tasks",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/tasks/today",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "tasks", "today"]
+						},
+						"description": "Get all tasks for today grouped by category (non-negotiable, important, optional). Includes task summary with completion statistics."
+					},
+					"response": [
+						{
+							"name": "Success - Today's Tasks",
+							"originalRequest": {
+								"method": "GET",
+								"url": {
+									"raw": "{{base_url}}/api/v1/tasks/today",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "tasks", "today"]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"body": "{\n  \"success\": true,\n  \"data\": {\n    \"date\": \"2024-01-30\",\n    \"plan_id\": \"770e8400-e29b-41d4-a716-446655440000\",\n    \"tasks_by_category\": {\n      \"non_negotiable\": [\n        {\n          \"task_id\": \"880e8400-e29b-41d4-a716-446655440001\",\n          \"title\": \"Morning meditation\",\n          \"description\": \"10 minutes of mindfulness\",\n          \"category\": \"NON_NEGOTIABLE\",\n          \"order_index\": 0,\n          \"completed\": true,\n          \"completed_at\": \"2024-01-30T07:30:00Z\",\n          \"due_date\": \"2024-01-30\",\n          \"created_at\": \"2024-01-30T06:00:00Z\"\n        }\n      ],\n      \"important\": [\n        {\n          \"task_id\": \"880e8400-e29b-41d4-a716-446655440002\",\n          \"title\": \"Complete project proposal\",\n          \"description\": \"Finish the Q1 project proposal document\",\n          \"category\": \"IMPORTANT\",\n          \"order_index\": 0,\n          \"completed\": false,\n          \"completed_at\": null,\n          \"due_date\": \"2024-01-30\",\n          \"created_at\": \"2024-01-30T06:00:00Z\"\n        },\n        {\n          \"task_id\": \"880e8400-e29b-41d4-a716-446655440003\",\n          \"title\": \"Review team updates\",\n          \"description\": null,\n          \"category\": \"IMPORTANT\",\n          \"order_index\": 1,\n          \"completed\": true,\n          \"completed_at\": \"2024-01-30T14:00:00Z\",\n          \"due_date\": \"2024-01-30\",\n          \"created_at\": \"2024-01-30T06:00:00Z\"\n        }\n      ],\n      \"optional\": [\n        {\n          \"task_id\": \"880e8400-e29b-41d4-a716-446655440004\",\n          \"title\": \"Organize desk\",\n          \"description\": \"Clean and organize workspace\",\n          \"category\": \"OPTIONAL\",\n          \"order_index\": 0,\n          \"completed\": false,\n          \"completed_at\": null,\n          \"due_date\": \"2024-01-30\",\n          \"created_at\": \"2024-01-30T06:00:00Z\"\n        }\n      ]\n    },\n    \"summary\": {\n      \"total_tasks\": 4,\n      \"completed_tasks\": 2,\n      \"completion_percentage\": 50\n    }\n  }\n}"
+						}
+					]
+				},
+				{
+					"name": "Create Task",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 201 || pm.response.code === 200) {",
+									"    var jsonData = pm.response.json();",
+									"    if (jsonData.data && jsonData.data.task_id) {",
+									"        pm.collectionVariables.set('task_id', jsonData.data.task_id);",
+									"    }",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"title\": \"Complete code review\",\n  \"description\": \"Review pull requests for the feature branch\",\n  \"category\": \"IMPORTANT\",\n  \"due_date\": \"2024-01-30\",\n  \"order_index\": 0\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/tasks",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "tasks"]
+						},
+						"description": "Create a new task.\n\n## Request Body\n- `title` (required): Task title (1-200 characters)\n- `description` (optional): Task description\n- `category` (optional): NON_NEGOTIABLE, IMPORTANT, or OPTIONAL (default: IMPORTANT)\n- `due_date` (optional): Date in YYYY-MM-DD format\n- `order_index` (optional): Display order within category"
+					},
+					"response": [
+						{
+							"name": "Success - Task Created",
+							"originalRequest": {
+								"method": "POST",
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"title\": \"Complete code review\",\n  \"description\": \"Review pull requests for the feature branch\",\n  \"category\": \"IMPORTANT\",\n  \"due_date\": \"2024-01-30\"\n}"
+								},
+								"url": {
+									"raw": "{{base_url}}/api/v1/tasks",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "tasks"]
+								}
+							},
+							"status": "Created",
+							"code": 201,
+							"_postman_previewlanguage": "json",
+							"body": "{\n  \"success\": true,\n  \"data\": {\n    \"task_id\": \"880e8400-e29b-41d4-a716-446655440005\",\n    \"title\": \"Complete code review\",\n    \"description\": \"Review pull requests for the feature branch\",\n    \"category\": \"IMPORTANT\",\n    \"order_index\": 0,\n    \"completed\": false,\n    \"completed_at\": null,\n    \"due_date\": \"2024-01-30\",\n    \"created_at\": \"2024-01-30T10:00:00Z\"\n  },\n  \"message\": \"Task created successfully\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Get Task by ID",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/tasks/{{task_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "tasks", "{{task_id}}"]
+						},
+						"description": "Get a specific task by its ID."
+					},
+					"response": [
+						{
+							"name": "Success - Task Details",
+							"originalRequest": {
+								"method": "GET",
+								"url": {
+									"raw": "{{base_url}}/api/v1/tasks/880e8400-e29b-41d4-a716-446655440005",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "tasks", "880e8400-e29b-41d4-a716-446655440005"]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"body": "{\n  \"success\": true,\n  \"data\": {\n    \"task_id\": \"880e8400-e29b-41d4-a716-446655440005\",\n    \"title\": \"Complete code review\",\n    \"description\": \"Review pull requests for the feature branch\",\n    \"category\": \"IMPORTANT\",\n    \"order_index\": 0,\n    \"completed\": false,\n    \"completed_at\": null,\n    \"due_date\": \"2024-01-30\",\n    \"created_at\": \"2024-01-30T10:00:00Z\"\n  }\n}"
+						},
+						{
+							"name": "Error - Task Not Found",
+							"originalRequest": {
+								"method": "GET",
+								"url": {
+									"raw": "{{base_url}}/api/v1/tasks/invalid-uuid",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "tasks", "invalid-uuid"]
+								}
+							},
+							"status": "Not Found",
+							"code": 404,
+							"_postman_previewlanguage": "json",
+							"body": "{\n  \"success\": false,\n  \"error\": {\n    \"code\": \"TASK_001\",\n    \"message\": \"Task not found\"\n  }\n}"
+						}
+					]
+				},
+				{
+					"name": "Update Task",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"title\": \"Complete code review - Updated\",\n  \"description\": \"Review all pending pull requests\",\n  \"category\": \"NON_NEGOTIABLE\",\n  \"order_index\": 0\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/tasks/{{task_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "tasks", "{{task_id}}"]
+						},
+						"description": "Update an existing task. All fields are optional - only provided fields will be updated.\n\n## Request Body\n- `title` (optional): New task title\n- `description` (optional): New description\n- `category` (optional): New category\n- `due_date` (optional): New due date\n- `order_index` (optional): New display order\n- `completed` (optional): Completion status"
+					},
+					"response": [
+						{
+							"name": "Success - Task Updated",
+							"originalRequest": {
+								"method": "PUT",
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"title\": \"Complete code review - Updated\",\n  \"category\": \"NON_NEGOTIABLE\"\n}"
+								},
+								"url": {
+									"raw": "{{base_url}}/api/v1/tasks/{{task_id}}",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "tasks", "{{task_id}}"]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"body": "{\n  \"success\": true,\n  \"data\": {\n    \"task_id\": \"880e8400-e29b-41d4-a716-446655440005\",\n    \"title\": \"Complete code review - Updated\",\n    \"description\": \"Review all pending pull requests\",\n    \"category\": \"NON_NEGOTIABLE\",\n    \"order_index\": 0,\n    \"completed\": false,\n    \"completed_at\": null,\n    \"due_date\": \"2024-01-30\",\n    \"created_at\": \"2024-01-30T10:00:00Z\"\n  },\n  \"message\": \"Task updated successfully\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Delete Task",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/tasks/{{task_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "tasks", "{{task_id}}"]
+						},
+						"description": "Delete a task by its ID. This action cannot be undone."
+					},
+					"response": [
+						{
+							"name": "Success - Task Deleted",
+							"originalRequest": {
+								"method": "DELETE",
+								"url": {
+									"raw": "{{base_url}}/api/v1/tasks/{{task_id}}",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "tasks", "{{task_id}}"]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"body": "{\n  \"success\": true,\n  \"message\": \"Task deleted successfully\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Complete Task",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/tasks/{{task_id}}/complete",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "tasks", "{{task_id}}", "complete"]
+						},
+						"description": "Mark a task as completed. Returns the updated task with completion timestamp, celebration message, and progress update."
+					},
+					"response": [
+						{
+							"name": "Success - Task Completed",
+							"originalRequest": {
+								"method": "POST",
+								"url": {
+									"raw": "{{base_url}}/api/v1/tasks/{{task_id}}/complete",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "tasks", "{{task_id}}", "complete"]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"body": "{\n  \"success\": true,\n  \"data\": {\n    \"task_id\": \"880e8400-e29b-41d4-a716-446655440005\",\n    \"title\": \"Complete code review\",\n    \"completed\": true,\n    \"completed_at\": \"2024-01-30T15:30:00Z\",\n    \"celebration\": {\n      \"message\": \"Great job! You're making progress! 🎉\",\n      \"icon\": \"🌟\"\n    },\n    \"progress_update\": {\n      \"tasks_completed_today\": 3,\n      \"daily_completion_percentage\": 75\n    }\n  },\n  \"message\": \"Task marked as completed\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Uncomplete Task",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/tasks/{{task_id}}/uncomplete",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "tasks", "{{task_id}}", "uncomplete"]
+						},
+						"description": "Mark a completed task as incomplete. Resets the completion status and timestamp."
+					},
+					"response": [
+						{
+							"name": "Success - Task Uncompleted",
+							"originalRequest": {
+								"method": "POST",
+								"url": {
+									"raw": "{{base_url}}/api/v1/tasks/{{task_id}}/uncomplete",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "tasks", "{{task_id}}", "uncomplete"]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"body": "{\n  \"success\": true,\n  \"data\": {\n    \"task_id\": \"880e8400-e29b-41d4-a716-446655440005\",\n    \"title\": \"Complete code review\",\n    \"completed\": false,\n    \"completed_at\": null\n  },\n  \"message\": \"Task marked as incomplete\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Plan Day (Voice Input)",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "voice_file",
+									"description": "Audio file (mp3, wav, m4a) with voice input describing tasks for the day",
+									"type": "file",
+									"src": []
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/tasks/plan-day",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "tasks", "plan-day"]
+						},
+						"description": "Plan the day using voice input. Upload an audio file describing your tasks, and the AI will extract and categorize them.\n\n## Premium Feature\nThis endpoint requires a premium subscription (MONTHLY or ANNUAL tier).\n\n## Request\n- `voice_file`: Audio file (mp3, wav, m4a) with voice description of tasks\n\n## Response\nReturns transcription and extracted tasks for review before confirmation."
+					},
+					"response": [
+						{
+							"name": "Success - Tasks Extracted",
+							"originalRequest": {
+								"method": "POST",
+								"body": {
+									"mode": "formdata",
+									"formdata": [
+										{
+											"key": "voice_file",
+											"type": "file",
+											"src": "morning_plan.m4a"
+										}
+									]
+								},
+								"url": {
+									"raw": "{{base_url}}/api/v1/tasks/plan-day",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "tasks", "plan-day"]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"body": "{\n  \"success\": true,\n  \"data\": {\n    \"transcription\": \"Today I need to start with morning meditation, then complete the project proposal which is really important. I should also review team updates and maybe organize my desk if I have time.\",\n    \"parsed_goal\": \"Productive work day with focus on project completion\",\n    \"extracted_tasks\": [\n      {\n        \"title\": \"Morning meditation\",\n        \"category\": \"NON_NEGOTIABLE\",\n        \"confidence_score\": 0.95,\n        \"order_index\": 0\n      },\n      {\n        \"title\": \"Complete project proposal\",\n        \"category\": \"IMPORTANT\",\n        \"confidence_score\": 0.92,\n        \"order_index\": 0\n      },\n      {\n        \"title\": \"Review team updates\",\n        \"category\": \"IMPORTANT\",\n        \"confidence_score\": 0.88,\n        \"order_index\": 1\n      },\n      {\n        \"title\": \"Organize desk\",\n        \"category\": \"OPTIONAL\",\n        \"confidence_score\": 0.85,\n        \"order_index\": 0\n      }\n    ],\n    \"voice_recording_url\": \"https://storage.example.com/recordings/abc123.m4a\"\n  },\n  \"message\": \"Tasks extracted successfully. Please review and confirm.\"\n}"
+						},
+						{
+							"name": "Error - Premium Required",
+							"originalRequest": {
+								"method": "POST",
+								"body": {
+									"mode": "formdata",
+									"formdata": [
+										{
+											"key": "voice_file",
+											"type": "file",
+											"src": "morning_plan.m4a"
+										}
+									]
+								},
+								"url": {
+									"raw": "{{base_url}}/api/v1/tasks/plan-day",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "tasks", "plan-day"]
+								}
+							},
+							"status": "Forbidden",
+							"code": 403,
+							"_postman_previewlanguage": "json",
+							"body": "{\n  \"success\": false,\n  \"error\": {\n    \"code\": \"FEATURE_001\",\n    \"message\": \"Voice planning is a premium feature. Please upgrade your subscription.\"\n  }\n}"
+						}
+					]
+				},
+				{
+					"name": "Confirm Daily Plan",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200 || pm.response.code === 201) {",
+									"    var jsonData = pm.response.json();",
+									"    if (jsonData.data && jsonData.data.plan_id) {",
+									"        pm.collectionVariables.set('plan_id', jsonData.data.plan_id);",
+									"    }",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"date\": \"2024-01-30\",\n  \"tasks\": [\n    {\n      \"title\": \"Morning meditation\",\n      \"description\": \"10 minutes of mindfulness\",\n      \"category\": \"NON_NEGOTIABLE\",\n      \"order_index\": 0\n    },\n    {\n      \"title\": \"Complete project proposal\",\n      \"description\": \"Finish the Q1 project proposal document\",\n      \"category\": \"IMPORTANT\",\n      \"order_index\": 0\n    },\n    {\n      \"title\": \"Review team updates\",\n      \"category\": \"IMPORTANT\",\n      \"order_index\": 1\n    },\n    {\n      \"title\": \"Organize desk\",\n      \"description\": \"Clean and organize workspace\",\n      \"category\": \"OPTIONAL\",\n      \"order_index\": 0\n    }\n  ],\n  \"voice_recording_url\": \"https://storage.example.com/recordings/abc123.m4a\",\n  \"transcription\": \"Today I need to start with morning meditation...\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/tasks/plan-day/confirm",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "tasks", "plan-day", "confirm"]
+						},
+						"description": "Confirm and save the daily plan with reviewed/edited tasks.\n\n## Request Body\n- `date` (required): Plan date in YYYY-MM-DD format\n- `tasks` (required): Array of tasks to create\n- `voice_recording_url` (optional): URL of the voice recording\n- `transcription` (optional): Voice transcription text"
+					},
+					"response": [
+						{
+							"name": "Success - Plan Confirmed",
+							"originalRequest": {
+								"method": "POST",
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"date\": \"2024-01-30\",\n  \"tasks\": [...]\n}"
+								},
+								"url": {
+									"raw": "{{base_url}}/api/v1/tasks/plan-day/confirm",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "tasks", "plan-day", "confirm"]
+								}
+							},
+							"status": "Created",
+							"code": 201,
+							"_postman_previewlanguage": "json",
+							"body": "{\n  \"success\": true,\n  \"data\": {\n    \"plan_id\": \"770e8400-e29b-41d4-a716-446655440000\",\n    \"date\": \"2024-01-30\",\n    \"transcription\": \"Today I need to start with morning meditation...\",\n    \"completed\": false,\n    \"tasks\": [\n      {\n        \"task_id\": \"880e8400-e29b-41d4-a716-446655440001\",\n        \"title\": \"Morning meditation\",\n        \"category\": \"NON_NEGOTIABLE\",\n        \"completed\": false\n      },\n      {\n        \"task_id\": \"880e8400-e29b-41d4-a716-446655440002\",\n        \"title\": \"Complete project proposal\",\n        \"category\": \"IMPORTANT\",\n        \"completed\": false\n      }\n    ],\n    \"created_at\": \"2024-01-30T06:00:00Z\"\n  },\n  \"message\": \"Daily plan created successfully\"\n}"
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "User Tasks (v2)",
+			"description": "HomeScreen-facing task endpoints with user-scoped paths.\n\nThese v2 endpoints use `/api/v1/users/{userId}/tasks` paths and return data structured for the HomeScreen (priority card, later tasks, day summaries).\n\n## Task Categories\n- `WORK`, `PERSONAL`, `HEALTH`, `LEARNING`, `OTHER`\n\n## Task Priority\n- `high`: Priority card (only one per day)\n- `medium` / `low`: Later task list\n\n## Task Status\n- `pending`, `in_progress`, `completed`, `skipped`",
+			"item": [
+				{
+					"name": "Get Daily Tasks",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/users/{{user_id}}/tasks/daily?date=2026-02-07",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "users", "{{user_id}}", "tasks", "daily"],
+							"query": [
+								{
+									"key": "date",
+									"value": "2026-02-07",
+									"description": "ISO date (YYYY-MM-DD). Defaults to today if omitted."
+								}
+							]
+						},
+						"description": "Fetch all tasks the user has planned for a given date (defaults to today).\n\nReturns structured data for the HomeScreen:\n- `hasTasks` toggle between empty and planned states\n- `priorityTask` (the single high-priority task, or null)\n- `laterTasks` (medium / low priority tasks)\n- `daySummaries` (day-selector pill data for the last 7 days)"
+					},
+					"response": [
+						{
+							"name": "200 OK — Tasks Exist",
+							"originalRequest": {
+								"method": "GET",
+								"url": {
+									"raw": "{{base_url}}/api/v1/users/{{user_id}}/tasks/daily?date=2026-02-07",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "users", "{{user_id}}", "tasks", "daily"],
+									"query": [
+										{
+											"key": "date",
+											"value": "2026-02-07"
+										}
+									]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"body": "{\n  \"success\": true,\n  \"data\": {\n    \"date\": \"2026-02-07\",\n    \"hasTasks\": true,\n    \"priorityTask\": {\n      \"id\": \"task-uuid-001\",\n      \"userId\": \"dev-user-001\",\n      \"title\": \"Write Chapter 3\",\n      \"subtitle\": null,\n      \"category\": \"WORK\",\n      \"priority\": \"high\",\n      \"durationMins\": 45,\n      \"iconType\": \"pages\",\n      \"status\": \"pending\",\n      \"date\": \"2026-02-07\",\n      \"createdAt\": \"2026-02-07T06:30:00.000Z\",\n      \"updatedAt\": \"2026-02-07T06:30:00.000Z\"\n    },\n    \"laterTasks\": [\n      {\n        \"id\": \"task-uuid-002\",\n        \"userId\": \"dev-user-001\",\n        \"title\": \"Read 10 pages\",\n        \"subtitle\": \"Self Improvement\",\n        \"category\": \"LEARNING\",\n        \"priority\": \"medium\",\n        \"durationMins\": 20,\n        \"iconType\": \"pages\",\n        \"status\": \"pending\",\n        \"date\": \"2026-02-07\",\n        \"createdAt\": \"2026-02-07T06:30:00.000Z\",\n        \"updatedAt\": \"2026-02-07T06:30:00.000Z\"\n      },\n      {\n        \"id\": \"task-uuid-003\",\n        \"userId\": \"dev-user-001\",\n        \"title\": \"Water plants\",\n        \"subtitle\": \"Living Room\",\n        \"category\": \"PERSONAL\",\n        \"priority\": \"low\",\n        \"durationMins\": 5,\n        \"iconType\": \"plant\",\n        \"status\": \"pending\",\n        \"date\": \"2026-02-07\",\n        \"createdAt\": \"2026-02-07T06:30:00.000Z\",\n        \"updatedAt\": \"2026-02-07T06:30:00.000Z\"\n      },\n      {\n        \"id\": \"task-uuid-004\",\n        \"userId\": \"dev-user-001\",\n        \"title\": \"Journaling\",\n        \"subtitle\": \"Reflection\",\n        \"category\": \"PERSONAL\",\n        \"priority\": \"low\",\n        \"durationMins\": 15,\n        \"iconType\": \"journal\",\n        \"status\": \"pending\",\n        \"date\": \"2026-02-07\",\n        \"createdAt\": \"2026-02-07T06:30:00.000Z\",\n        \"updatedAt\": \"2026-02-07T06:30:00.000Z\"\n      }\n    ],\n    \"daySummaries\": [\n      { \"date\": \"2026-02-07\", \"label\": \"Today\", \"isToday\": true, \"isCompleted\": false, \"totalTasks\": 4, \"completedTasks\": 0 },\n      { \"date\": \"2026-02-06\", \"label\": \"Thu\", \"isToday\": false, \"isCompleted\": true, \"totalTasks\": 3, \"completedTasks\": 3 },\n      { \"date\": \"2026-02-05\", \"label\": \"Wed\", \"isToday\": false, \"isCompleted\": true, \"totalTasks\": 2, \"completedTasks\": 2 }\n    ]\n  }\n}"
+						},
+						{
+							"name": "200 OK — No Tasks Planned",
+							"originalRequest": {
+								"method": "GET",
+								"url": {
+									"raw": "{{base_url}}/api/v1/users/{{user_id}}/tasks/daily?date=2026-02-07",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "users", "{{user_id}}", "tasks", "daily"],
+									"query": [
+										{
+											"key": "date",
+											"value": "2026-02-07"
+										}
+									]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"body": "{\n  \"success\": true,\n  \"data\": {\n    \"date\": \"2026-02-07\",\n    \"hasTasks\": false,\n    \"priorityTask\": null,\n    \"laterTasks\": [],\n    \"daySummaries\": [\n      { \"date\": \"2026-02-07\", \"label\": \"Today\", \"isToday\": true, \"isCompleted\": false, \"totalTasks\": 0, \"completedTasks\": 0 },\n      { \"date\": \"2026-02-06\", \"label\": \"Thu\", \"isToday\": false, \"isCompleted\": true, \"totalTasks\": 3, \"completedTasks\": 3 },\n      { \"date\": \"2026-02-05\", \"label\": \"Wed\", \"isToday\": false, \"isCompleted\": true, \"totalTasks\": 2, \"completedTasks\": 2 }\n    ]\n  }\n}"
+						},
+						{
+							"name": "Error — 403 Forbidden",
+							"originalRequest": {
+								"method": "GET",
+								"url": {
+									"raw": "{{base_url}}/api/v1/users/other-user-id/tasks/daily",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "users", "other-user-id", "tasks", "daily"]
+								}
+							},
+							"status": "Forbidden",
+							"code": 403,
+							"_postman_previewlanguage": "json",
+							"body": "{\n  \"success\": false,\n  \"error\": {\n    \"code\": \"FORBIDDEN\",\n    \"message\": \"Cannot access another user's tasks\"\n  }\n}"
+						},
+						{
+							"name": "Error — 401 Unauthorized",
+							"originalRequest": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/api/v1/users/{{user_id}}/tasks/daily",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "users", "{{user_id}}", "tasks", "daily"]
+								}
+							},
+							"status": "Unauthorized",
+							"code": 401,
+							"_postman_previewlanguage": "json",
+							"body": "{\n  \"success\": false,\n  \"error\": {\n    \"code\": \"UNAUTHORIZED\",\n    \"message\": \"Invalid or expired token\"\n  }\n}"
+						}
+					]
+				},
+				{
+					"name": "Create Task (v2)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 201) {",
+									"    var jsonData = pm.response.json();",
+									"    if (jsonData.data && jsonData.data.id) {",
+									"        pm.collectionVariables.set('task_id', jsonData.data.id);",
+									"    }",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"title\": \"Write Chapter 3\",\n  \"subtitle\": null,\n  \"category\": \"WORK\",\n  \"priority\": \"high\",\n  \"durationMins\": 45,\n  \"iconType\": \"pages\",\n  \"date\": \"2026-02-07\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/users/{{user_id}}/tasks",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "users", "{{user_id}}", "tasks"]
+						},
+						"description": "Create a new task for the given date (defaults to today).\n\nUsed when the user plans their day via the \"Plan My Day\" flow or adds a task manually.\n\n## Request Body\n- `title` (required): Task title, max 200 chars\n- `subtitle` (optional): Context / subtitle\n- `category` (required): WORK, PERSONAL, HEALTH, LEARNING, OTHER\n- `priority` (required): high (priority card), medium / low (later list)\n- `durationMins` (required): Estimated duration in minutes (1-480)\n- `iconType` (optional): Client icon hint (pages, plant, journal, exercise, code, default)\n- `date` (optional): ISO date, defaults to today"
+					},
+					"response": [
+						{
+							"name": "201 Created",
+							"originalRequest": {
+								"method": "POST",
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"title\": \"Write Chapter 3\",\n  \"subtitle\": null,\n  \"category\": \"WORK\",\n  \"priority\": \"high\",\n  \"durationMins\": 45,\n  \"iconType\": \"pages\",\n  \"date\": \"2026-02-07\"\n}"
+								},
+								"url": {
+									"raw": "{{base_url}}/api/v1/users/{{user_id}}/tasks",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "users", "{{user_id}}", "tasks"]
+								}
+							},
+							"status": "Created",
+							"code": 201,
+							"_postman_previewlanguage": "json",
+							"body": "{\n  \"success\": true,\n  \"data\": {\n    \"id\": \"task-uuid-005\",\n    \"userId\": \"dev-user-001\",\n    \"title\": \"Write Chapter 3\",\n    \"subtitle\": null,\n    \"category\": \"WORK\",\n    \"priority\": \"high\",\n    \"durationMins\": 45,\n    \"iconType\": \"pages\",\n    \"status\": \"pending\",\n    \"date\": \"2026-02-07\",\n    \"createdAt\": \"2026-02-07T06:30:00.000Z\",\n    \"updatedAt\": \"2026-02-07T06:30:00.000Z\"\n  }\n}"
+						},
+						{
+							"name": "Error — 409 Conflict (duplicate high-priority)",
+							"originalRequest": {
+								"method": "POST",
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"title\": \"Another high-priority task\",\n  \"category\": \"PERSONAL\",\n  \"priority\": \"high\",\n  \"durationMins\": 30,\n  \"date\": \"2026-02-07\"\n}"
+								},
+								"url": {
+									"raw": "{{base_url}}/api/v1/users/{{user_id}}/tasks",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "users", "{{user_id}}", "tasks"]
+								}
+							},
+							"status": "Conflict",
+							"code": 409,
+							"_postman_previewlanguage": "json",
+							"body": "{\n  \"success\": false,\n  \"error\": {\n    \"code\": \"CONFLICT\",\n    \"message\": \"A high-priority task already exists for this date\"\n  }\n}"
+						},
+						{
+							"name": "Error — 400 Validation Error",
+							"originalRequest": {
+								"method": "POST",
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"category\": \"WORK\",\n  \"priority\": \"high\",\n  \"durationMins\": 45\n}"
+								},
+								"url": {
+									"raw": "{{base_url}}/api/v1/users/{{user_id}}/tasks",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "users", "{{user_id}}", "tasks"]
+								}
+							},
+							"status": "Unprocessable Entity",
+							"code": 422,
+							"_postman_previewlanguage": "json",
+							"body": "{\n  \"success\": false,\n  \"error\": {\n    \"code\": \"VALIDATION_ERROR\",\n    \"message\": \"title is required\",\n    \"details\": [\n      {\n        \"field\": \"title\",\n        \"message\": \"Field required\"\n      }\n    ]\n  }\n}"
+						},
+						{
+							"name": "Error — 403 Forbidden",
+							"originalRequest": {
+								"method": "POST",
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"title\": \"Task for another user\",\n  \"category\": \"WORK\",\n  \"priority\": \"medium\",\n  \"durationMins\": 30\n}"
+								},
+								"url": {
+									"raw": "{{base_url}}/api/v1/users/other-user-id/tasks",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "users", "other-user-id", "tasks"]
+								}
+							},
+							"status": "Forbidden",
+							"code": 403,
+							"_postman_previewlanguage": "json",
+							"body": "{\n  \"success\": false,\n  \"error\": {\n    \"code\": \"FORBIDDEN\",\n    \"message\": \"Cannot create tasks for another user\"\n  }\n}"
+						}
+					]
+				},
+				{
+					"name": "Batch Create Tasks",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"date\": \"2026-02-07\",\n  \"tasks\": [\n    {\n      \"title\": \"Write Chapter 3\",\n      \"category\": \"WORK\",\n      \"priority\": \"high\",\n      \"durationMins\": 45,\n      \"iconType\": \"pages\"\n    },\n    {\n      \"title\": \"Read 10 pages\",\n      \"subtitle\": \"Self Improvement\",\n      \"category\": \"LEARNING\",\n      \"priority\": \"medium\",\n      \"durationMins\": 20,\n      \"iconType\": \"pages\"\n    },\n    {\n      \"title\": \"Water plants\",\n      \"subtitle\": \"Living Room\",\n      \"category\": \"PERSONAL\",\n      \"priority\": \"low\",\n      \"durationMins\": 5,\n      \"iconType\": \"plant\"\n    }\n  ]\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/users/{{user_id}}/tasks/batch",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "users", "{{user_id}}", "tasks", "batch"]
+						},
+						"description": "Create multiple tasks at once for the \"Plan My Day\" flow.\n\n## Request Body\n- `date` (optional): ISO date, defaults to today\n- `tasks` (required): Array of 1-20 task items\n\n## Constraints\n- At most one task in the batch may have `priority: \"high\"`\n- If a high-priority task already exists for the date, including one in the batch causes a 409 Conflict"
+					},
+					"response": [
+						{
+							"name": "201 Created",
+							"originalRequest": {
+								"method": "POST",
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"date\": \"2026-02-07\",\n  \"tasks\": [\n    {\n      \"title\": \"Write Chapter 3\",\n      \"category\": \"WORK\",\n      \"priority\": \"high\",\n      \"durationMins\": 45,\n      \"iconType\": \"pages\"\n    },\n    {\n      \"title\": \"Read 10 pages\",\n      \"subtitle\": \"Self Improvement\",\n      \"category\": \"LEARNING\",\n      \"priority\": \"medium\",\n      \"durationMins\": 20,\n      \"iconType\": \"pages\"\n    },\n    {\n      \"title\": \"Water plants\",\n      \"subtitle\": \"Living Room\",\n      \"category\": \"PERSONAL\",\n      \"priority\": \"low\",\n      \"durationMins\": 5,\n      \"iconType\": \"plant\"\n    }\n  ]\n}"
+								},
+								"url": {
+									"raw": "{{base_url}}/api/v1/users/{{user_id}}/tasks/batch",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "users", "{{user_id}}", "tasks", "batch"]
+								}
+							},
+							"status": "Created",
+							"code": 201,
+							"_postman_previewlanguage": "json",
+							"body": "{\n  \"success\": true,\n  \"data\": {\n    \"date\": \"2026-02-07\",\n    \"created\": 3,\n    \"tasks\": [\n      { \"id\": \"task-uuid-010\", \"title\": \"Write Chapter 3\", \"priority\": \"high\", \"status\": \"pending\" },\n      { \"id\": \"task-uuid-011\", \"title\": \"Read 10 pages\", \"priority\": \"medium\", \"status\": \"pending\" },\n      { \"id\": \"task-uuid-012\", \"title\": \"Water plants\", \"priority\": \"low\", \"status\": \"pending\" }\n    ]\n  }\n}"
+						},
+						{
+							"name": "Error — 409 Conflict (high-priority exists)",
+							"originalRequest": {
+								"method": "POST",
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"date\": \"2026-02-07\",\n  \"tasks\": [\n    {\n      \"title\": \"Another high-priority\",\n      \"category\": \"WORK\",\n      \"priority\": \"high\",\n      \"durationMins\": 30\n    }\n  ]\n}"
+								},
+								"url": {
+									"raw": "{{base_url}}/api/v1/users/{{user_id}}/tasks/batch",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "users", "{{user_id}}", "tasks", "batch"]
+								}
+							},
+							"status": "Conflict",
+							"code": 409,
+							"_postman_previewlanguage": "json",
+							"body": "{\n  \"success\": false,\n  \"error\": {\n    \"code\": \"CONFLICT\",\n    \"message\": \"A high-priority task already exists for this date\"\n  }\n}"
+						},
+						{
+							"name": "Error — 400 Multiple High-Priority",
+							"originalRequest": {
+								"method": "POST",
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"date\": \"2026-02-07\",\n  \"tasks\": [\n    { \"title\": \"Task A\", \"category\": \"WORK\", \"priority\": \"high\", \"durationMins\": 30 },\n    { \"title\": \"Task B\", \"category\": \"HEALTH\", \"priority\": \"high\", \"durationMins\": 20 }\n  ]\n}"
+								},
+								"url": {
+									"raw": "{{base_url}}/api/v1/users/{{user_id}}/tasks/batch",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "users", "{{user_id}}", "tasks", "batch"]
+								}
+							},
+							"status": "Bad Request",
+							"code": 400,
+							"_postman_previewlanguage": "json",
+							"body": "{\n  \"success\": false,\n  \"error\": {\n    \"code\": \"VALIDATION_ERROR\",\n    \"message\": \"Only one high-priority task is allowed per date\"\n  }\n}"
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "Journal",
+			"description": "Journal entry endpoints for creating reflections, tracking moods, and viewing insights.\n\n## Mood Ratings\n- `GREAT` (5): Feeling excellent\n- `GOOD` (4): Feeling positive\n- `CALM` (3): Feeling neutral/peaceful\n- `STRESSED` (2): Feeling pressured\n- `OVERWHELMED` (1): Feeling very stressed",
+			"item": [
+				{
+					"name": "Create Journal Entry",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 201 || pm.response.code === 200) {",
+									"    var jsonData = pm.response.json();",
+									"    if (jsonData.data && jsonData.data.entry_id) {",
+									"        pm.collectionVariables.set('entry_id', jsonData.data.entry_id);",
+									"    }",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"date\": \"2024-01-30\",\n  \"entry_text\": \"Today was a productive day. I managed to complete my morning meditation and stayed focused during work. I noticed I had fewer urges to check social media, which feels like real progress. The breathing exercises helped when I felt stressed during the afternoon meeting.\",\n  \"mood_rating\": \"GOOD\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/journal/entry",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "journal", "entry"]
+						},
+						"description": "Create a new text-based journal entry.\n\n## Request Body\n- `date` (required): Entry date in YYYY-MM-DD format\n- `entry_text` (required): Journal content\n- `mood_rating` (optional): GREAT, GOOD, CALM, STRESSED, or OVERWHELMED\n\n## Free Tier Limit\nFree users are limited to 10 journal entries per month."
+					},
+					"response": [
+						{
+							"name": "Success - Entry Created",
+							"originalRequest": {
+								"method": "POST",
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"date\": \"2024-01-30\",\n  \"entry_text\": \"Today was a productive day...\",\n  \"mood_rating\": \"GOOD\"\n}"
+								},
+								"url": {
+									"raw": "{{base_url}}/api/v1/journal/entry",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "journal", "entry"]
+								}
+							},
+							"status": "Created",
+							"code": 201,
+							"_postman_previewlanguage": "json",
+							"body": "{\n  \"success\": true,\n  \"data\": {\n    \"entry_id\": \"990e8400-e29b-41d4-a716-446655440001\",\n    \"date\": \"2024-01-30\",\n    \"entry_text\": \"Today was a productive day. I managed to complete my morning meditation and stayed focused during work...\",\n    \"transcription\": null,\n    \"mood_rating\": \"GOOD\",\n    \"primary_emotion\": \"satisfaction\",\n    \"summary\": \"Productive day with successful meditation practice and reduced social media cravings.\",\n    \"voice_recording_url\": null,\n    \"is_voice_entry\": false,\n    \"created_at\": \"2024-01-30T21:00:00Z\",\n    \"updated_at\": \"2024-01-30T21:00:00Z\"\n  },\n  \"message\": \"Journal entry created successfully\"\n}"
+						},
+						{
+							"name": "Error - Monthly Limit Reached",
+							"originalRequest": {
+								"method": "POST",
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"date\": \"2024-01-30\",\n  \"entry_text\": \"Today was productive...\",\n  \"mood_rating\": \"GOOD\"\n}"
+								},
+								"url": {
+									"raw": "{{base_url}}/api/v1/journal/entry",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "journal", "entry"]
+								}
+							},
+							"status": "Forbidden",
+							"code": 403,
+							"_postman_previewlanguage": "json",
+							"body": "{\n  \"success\": false,\n  \"error\": {\n    \"code\": \"FEATURE_002\",\n    \"message\": \"Monthly journal limit reached. Upgrade to premium for unlimited entries.\"\n  }\n}"
+						}
+					]
+				},
+				{
+					"name": "Get Journal Entries",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/journal/entries?page=1&limit=10",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "journal", "entries"],
+							"query": [
+								{
+									"key": "page",
+									"value": "1",
+									"description": "Page number (default: 1)"
+								},
+								{
+									"key": "limit",
+									"value": "10",
+									"description": "Items per page (default: 10, max: 50)"
+								},
+								{
+									"key": "start_date",
+									"value": "2024-01-01",
+									"description": "Filter by start date (optional)",
+									"disabled": true
+								},
+								{
+									"key": "end_date",
+									"value": "2024-01-31",
+									"description": "Filter by end date (optional)",
+									"disabled": true
+								},
+								{
+									"key": "mood",
+									"value": "GOOD",
+									"description": "Filter by mood rating (optional)",
+									"disabled": true
+								}
+							]
+						},
+						"description": "Get paginated list of journal entries with optional filters.\n\n## Query Parameters\n- `page` (optional): Page number, default 1\n- `limit` (optional): Items per page, default 10, max 50\n- `start_date` (optional): Filter entries from this date\n- `end_date` (optional): Filter entries until this date\n- `mood` (optional): Filter by mood rating"
+					},
+					"response": [
+						{
+							"name": "Success - Entries List",
+							"originalRequest": {
+								"method": "GET",
+								"url": {
+									"raw": "{{base_url}}/api/v1/journal/entries?page=1&limit=10",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "journal", "entries"],
+									"query": [
+										{
+											"key": "page",
+											"value": "1"
+										},
+										{
+											"key": "limit",
+											"value": "10"
+										}
+									]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"body": "{\n  \"success\": true,\n  \"data\": {\n    \"entries\": [\n      {\n        \"entry_id\": \"990e8400-e29b-41d4-a716-446655440001\",\n        \"date\": \"2024-01-30\",\n        \"summary\": \"Productive day with successful meditation practice\",\n        \"mood_rating\": \"GOOD\",\n        \"mood_icon\": \"😊\",\n        \"primary_emotion\": \"satisfaction\",\n        \"audio_url\": null,\n        \"audio_duration_seconds\": null,\n        \"waveform_data\": null,\n        \"insights_count\": 2,\n        \"created_at\": \"2024-01-30T21:00:00Z\"\n      },\n      {\n        \"entry_id\": \"990e8400-e29b-41d4-a716-446655440002\",\n        \"date\": \"2024-01-29\",\n        \"summary\": \"Challenging day but managed to stay on track\",\n        \"mood_rating\": \"CALM\",\n        \"mood_icon\": \"😌\",\n        \"primary_emotion\": \"resilience\",\n        \"audio_url\": \"https://storage.example.com/audio/entry2.m4a\",\n        \"audio_duration_seconds\": 120,\n        \"waveform_data\": [0.2, 0.5, 0.8, 0.3, 0.6],\n        \"insights_count\": 1,\n        \"created_at\": \"2024-01-29T20:30:00Z\"\n      }\n    ],\n    \"pagination\": {\n      \"current_page\": 1,\n      \"total_pages\": 2,\n      \"total_entries\": 15,\n      \"per_page\": 10,\n      \"has_next\": true,\n      \"has_previous\": false\n    }\n  }\n}"
+						}
+					]
+				},
+				{
+					"name": "Get Journal Entry by ID",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/journal/entries/{{entry_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "journal", "entries", "{{entry_id}}"]
+						},
+						"description": "Get detailed journal entry by ID including full text, analysis, and insights."
+					},
+					"response": [
+						{
+							"name": "Success - Entry Details",
+							"originalRequest": {
+								"method": "GET",
+								"url": {
+									"raw": "{{base_url}}/api/v1/journal/entries/990e8400-e29b-41d4-a716-446655440001",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "journal", "entries", "990e8400-e29b-41d4-a716-446655440001"]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"body": "{\n  \"success\": true,\n  \"data\": {\n    \"entry_id\": \"990e8400-e29b-41d4-a716-446655440001\",\n    \"date\": \"2024-01-30\",\n    \"entry_text\": \"Today was a productive day. I managed to complete my morning meditation and stayed focused during work. I noticed I had fewer urges to check social media, which feels like real progress. The breathing exercises helped when I felt stressed during the afternoon meeting.\",\n    \"transcription\": null,\n    \"voice_recording_url\": null,\n    \"audio_duration_seconds\": null,\n    \"waveform_data\": null,\n    \"is_voice_entry\": false,\n    \"analysis\": {\n      \"mood_rating\": \"GOOD\",\n      \"primary_emotion\": \"satisfaction\",\n      \"secondary_emotions\": [\"pride\", \"calm\"],\n      \"sentiment_score\": 0.75\n    },\n    \"insights\": [\n      {\n        \"insight_id\": \"aa0e8400-e29b-41d4-a716-446655440001\",\n        \"insight_type\": \"POSITIVE_BEHAVIOR\",\n        \"title\": \"Social Media Progress\",\n        \"description\": \"You noticed fewer urges to check social media. This is a sign of building healthier habits!\",\n        \"icon\": \"📱\",\n        \"color\": \"green\"\n      },\n      {\n        \"insight_id\": \"aa0e8400-e29b-41d4-a716-446655440002\",\n        \"insight_type\": \"EMOTIONAL_AWARENESS\",\n        \"title\": \"Stress Management\",\n        \"description\": \"Using breathing exercises during stressful moments shows great emotional awareness.\",\n        \"icon\": \"🧘\",\n        \"color\": \"blue\"\n      }\n    ],\n    \"summary\": \"Productive day with successful meditation practice and reduced social media cravings.\",\n    \"created_at\": \"2024-01-30T21:00:00Z\",\n    \"updated_at\": \"2024-01-30T21:00:00Z\"\n  }\n}"
+						}
+					]
+				},
+				{
+					"name": "Update Journal Entry",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"entry_text\": \"Today was a productive day. I managed to complete my morning meditation and stayed focused during work. I noticed I had fewer urges to check social media, which feels like real progress. The breathing exercises helped when I felt stressed during the afternoon meeting. UPDATE: Ended the day with a great workout session!\",\n  \"mood_rating\": \"GREAT\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/journal/entries/{{entry_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "journal", "entries", "{{entry_id}}"]
+						},
+						"description": "Update an existing journal entry.\n\n## Request Body\n- `entry_text` (optional): Updated journal content\n- `mood_rating` (optional): Updated mood rating"
+					},
+					"response": [
+						{
+							"name": "Success - Entry Updated",
+							"originalRequest": {
+								"method": "PUT",
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"entry_text\": \"Updated entry text...\",\n  \"mood_rating\": \"GREAT\"\n}"
+								},
+								"url": {
+									"raw": "{{base_url}}/api/v1/journal/entries/{{entry_id}}",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "journal", "entries", "{{entry_id}}"]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"body": "{\n  \"success\": true,\n  \"data\": {\n    \"entry_id\": \"990e8400-e29b-41d4-a716-446655440001\",\n    \"date\": \"2024-01-30\",\n    \"entry_text\": \"Today was a productive day... UPDATE: Ended the day with a great workout session!\",\n    \"mood_rating\": \"GREAT\",\n    \"updated_at\": \"2024-01-30T22:00:00Z\"\n  },\n  \"message\": \"Journal entry updated successfully\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Delete Journal Entry",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/journal/entries/{{entry_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "journal", "entries", "{{entry_id}}"]
+						},
+						"description": "Delete a journal entry. This action cannot be undone."
+					},
+					"response": [
+						{
+							"name": "Success - Entry Deleted",
+							"originalRequest": {
+								"method": "DELETE",
+								"url": {
+									"raw": "{{base_url}}/api/v1/journal/entries/{{entry_id}}",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "journal", "entries", "{{entry_id}}"]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"body": "{\n  \"success\": true,\n  \"message\": \"Journal entry deleted successfully\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Get Mood Distribution",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/journal/mood-distribution?period=month",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "journal", "mood-distribution"],
+							"query": [
+								{
+									"key": "period",
+									"value": "month",
+									"description": "Period: week, month, or year"
+								}
+							]
+						},
+						"description": "Get mood distribution statistics for the specified period.\n\n## Query Parameters\n- `period` (optional): week, month, or year (default: month)"
+					},
+					"response": [
+						{
+							"name": "Success - Mood Distribution",
+							"originalRequest": {
+								"method": "GET",
+								"url": {
+									"raw": "{{base_url}}/api/v1/journal/mood-distribution?period=month",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "journal", "mood-distribution"],
+									"query": [
+										{
+											"key": "period",
+											"value": "month"
+										}
+									]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"body": "{\n  \"success\": true,\n  \"data\": {\n    \"period\": \"month\",\n    \"start_date\": \"2024-01-01\",\n    \"end_date\": \"2024-01-31\",\n    \"total_entries\": 15,\n    \"distribution\": {\n      \"GREAT\": {\n        \"count\": 3,\n        \"percentage\": 20\n      },\n      \"GOOD\": {\n        \"count\": 6,\n        \"percentage\": 40\n      },\n      \"CALM\": {\n        \"count\": 4,\n        \"percentage\": 26.67\n      },\n      \"STRESSED\": {\n        \"count\": 2,\n        \"percentage\": 13.33\n      },\n      \"OVERWHELMED\": {\n        \"count\": 0,\n        \"percentage\": 0\n      }\n    },\n    \"average_mood_score\": 3.67,\n    \"mood_trend\": \"improving\"\n  }\n}"
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "Subscription",
+			"description": "Subscription management endpoints for viewing packages, purchasing subscriptions, and managing billing.\n\n## Subscription Tiers\n- `FREE`: Basic features with limitations\n- `MONTHLY`: Full access, billed monthly\n- `ANNUAL`: Full access, billed annually (best value)",
+			"item": [
+				{
+					"name": "Get Subscription Packages",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/subscription/packages",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "subscription", "packages"]
+						},
+						"description": "Get all available subscription packages with pricing, features, and RevenueCat identifiers."
+					},
+					"response": [
+						{
+							"name": "Success - Packages List",
+							"originalRequest": {
+								"method": "GET",
+								"url": {
+									"raw": "{{base_url}}/api/v1/subscription/packages",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "subscription", "packages"]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"body": "{\n  \"success\": true,\n  \"data\": {\n    \"packages\": [\n      {\n        \"package_id\": \"free\",\n        \"tier\": \"FREE\",\n        \"name\": \"Free\",\n        \"description\": \"Get started with basic features\",\n        \"price\": 0,\n        \"currency\": \"USD\",\n        \"billing_period\": null,\n        \"revenuecat_identifier\": null,\n        \"product_identifier\": null,\n        \"features\": [\n          \"10 journal entries per month\",\n          \"Basic task management\",\n          \"Progress tracking\"\n        ],\n        \"limitations\": [\n          \"No AI insights\",\n          \"No voice transcription\",\n          \"Ads enabled\"\n        ],\n        \"trial_available\": false,\n        \"trial_duration_days\": null,\n        \"badge\": null,\n        \"savings\": null,\n        \"is_default\": true\n      },\n      {\n        \"package_id\": \"monthly\",\n        \"tier\": \"MONTHLY\",\n        \"name\": \"Premium Monthly\",\n        \"description\": \"Full access to all features\",\n        \"price\": 9.99,\n        \"currency\": \"USD\",\n        \"billing_period\": \"monthly\",\n        \"revenuecat_identifier\": \"$rc_monthly\",\n        \"product_identifier\": \"com.detoxdopamine.premium.monthly\",\n        \"features\": [\n          \"Unlimited journal entries\",\n          \"AI-powered insights\",\n          \"Voice transcription\",\n          \"Advanced analytics\",\n          \"No ads\",\n          \"Priority support\"\n        ],\n        \"limitations\": [],\n        \"trial_available\": true,\n        \"trial_duration_days\": 7,\n        \"badge\": null,\n        \"savings\": null,\n        \"is_default\": false\n      },\n      {\n        \"package_id\": \"annual\",\n        \"tier\": \"ANNUAL\",\n        \"name\": \"Premium Annual\",\n        \"description\": \"Best value - save 33%\",\n        \"price\": 79.99,\n        \"currency\": \"USD\",\n        \"billing_period\": \"yearly\",\n        \"revenuecat_identifier\": \"$rc_annual\",\n        \"product_identifier\": \"com.detoxdopamine.premium.annual\",\n        \"features\": [\n          \"Unlimited journal entries\",\n          \"AI-powered insights\",\n          \"Voice transcription\",\n          \"Advanced analytics\",\n          \"No ads\",\n          \"Priority support\"\n        ],\n        \"limitations\": [],\n        \"trial_available\": true,\n        \"trial_duration_days\": 7,\n        \"badge\": \"BEST VALUE\",\n        \"savings\": \"Save 33%\",\n        \"is_default\": false\n      }\n    ]\n  }\n}"
+						}
+					]
+				},
+				{
+					"name": "Purchase Subscription",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"package_id\": \"monthly\",\n  \"revenuecat_subscriber_id\": \"$RCAnonymousID:abc123def456\",\n  \"platform\": \"IOS\",\n  \"product_identifier\": \"com.detoxdopamine.premium.monthly\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/subscription/purchase",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "subscription", "purchase"]
+						},
+						"description": "Verify and activate a subscription purchase from App Store or Play Store via RevenueCat.\n\n## Request Body\n- `package_id` (required): Package identifier (monthly, annual)\n- `revenuecat_subscriber_id` (required): RevenueCat subscriber ID\n- `platform` (required): IOS, ANDROID, or WEB\n- `product_identifier` (required): Store product identifier"
+					},
+					"response": [
+						{
+							"name": "Success - Subscription Activated",
+							"originalRequest": {
+								"method": "POST",
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"package_id\": \"monthly\",\n  \"revenuecat_subscriber_id\": \"$RCAnonymousID:abc123def456\",\n  \"platform\": \"IOS\",\n  \"product_identifier\": \"com.detoxdopamine.premium.monthly\"\n}"
+								},
+								"url": {
+									"raw": "{{base_url}}/api/v1/subscription/purchase",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "subscription", "purchase"]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"body": "{\n  \"success\": true,\n  \"data\": {\n    \"subscription_id\": \"bb0e8400-e29b-41d4-a716-446655440001\",\n    \"tier\": \"MONTHLY\",\n    \"status\": \"ACTIVE\",\n    \"started_at\": \"2024-01-30T10:00:00Z\",\n    \"expires_at\": \"2024-02-28T10:00:00Z\",\n    \"auto_renew\": true,\n    \"feature_limits\": {\n      \"journals_per_month\": -1,\n      \"ai_insights\": true,\n      \"ai_analysis\": true,\n      \"voice_transcription\": true,\n      \"progress_reports\": true,\n      \"unlimited_tasks\": true,\n      \"ads_enabled\": false,\n      \"advanced_analytics\": true,\n      \"priority_support\": true\n    }\n  },\n  \"message\": \"Subscription activated successfully\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Get Subscription Status",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/subscription/status",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "subscription", "status"]
+						},
+						"description": "Get the current subscription status including tier, expiration, and feature limits."
+					},
+					"response": [
+						{
+							"name": "Success - Subscription Status",
+							"originalRequest": {
+								"method": "GET",
+								"url": {
+									"raw": "{{base_url}}/api/v1/subscription/status",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "subscription", "status"]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"body": "{\n  \"success\": true,\n  \"data\": {\n    \"subscription_id\": \"bb0e8400-e29b-41d4-a716-446655440001\",\n    \"tier\": \"MONTHLY\",\n    \"status\": \"ACTIVE\",\n    \"started_at\": \"2024-01-30T10:00:00Z\",\n    \"expires_at\": \"2024-02-28T10:00:00Z\",\n    \"auto_renew\": true,\n    \"trial_end_date\": null,\n    \"cancelled_at\": null,\n    \"platform\": \"IOS\",\n    \"product_identifier\": \"com.detoxdopamine.premium.monthly\",\n    \"revenuecat_subscriber_id\": \"$RCAnonymousID:abc123def456\",\n    \"feature_limits\": {\n      \"journals_per_month\": -1,\n      \"ai_insights\": true,\n      \"ai_analysis\": true,\n      \"voice_transcription\": true,\n      \"progress_reports\": true,\n      \"unlimited_tasks\": true,\n      \"ads_enabled\": false,\n      \"advanced_analytics\": true,\n      \"priority_support\": true\n    }\n  }\n}"
+						}
+					]
+				},
+				{
+					"name": "Cancel Subscription",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"reason\": \"too_expensive\",\n  \"feedback\": \"The app is great but I can't afford the subscription right now.\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/subscription/cancel",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "subscription", "cancel"]
+						},
+						"description": "Cancel subscription auto-renewal. The subscription remains active until the expiration date.\n\n## Request Body\n- `reason` (optional): Cancellation reason code\n- `feedback` (optional): Additional feedback text"
+					},
+					"response": [
+						{
+							"name": "Success - Subscription Cancelled",
+							"originalRequest": {
+								"method": "POST",
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"reason\": \"too_expensive\",\n  \"feedback\": \"The app is great but I can't afford it.\"\n}"
+								},
+								"url": {
+									"raw": "{{base_url}}/api/v1/subscription/cancel",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "subscription", "cancel"]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"body": "{\n  \"success\": true,\n  \"data\": {\n    \"subscription_id\": \"bb0e8400-e29b-41d4-a716-446655440001\",\n    \"tier\": \"MONTHLY\",\n    \"status\": \"CANCELLED\",\n    \"expires_at\": \"2024-02-28T10:00:00Z\",\n    \"auto_renew\": false,\n    \"cancelled_at\": \"2024-01-30T15:00:00Z\"\n  },\n  \"message\": \"Subscription cancelled. You will retain access until 2024-02-28.\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Restore Purchases",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"platform\": \"IOS\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/subscription/restore",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "subscription", "restore"]
+						},
+						"description": "Restore previous purchases from App Store or Play Store. Useful when reinstalling the app or switching devices.\n\n## Request Body\n- `platform` (required): IOS or ANDROID"
+					},
+					"response": [
+						{
+							"name": "Success - Purchases Restored",
+							"originalRequest": {
+								"method": "POST",
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"platform\": \"IOS\"\n}"
+								},
+								"url": {
+									"raw": "{{base_url}}/api/v1/subscription/restore",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "subscription", "restore"]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"body": "{\n  \"success\": true,\n  \"data\": {\n    \"restored\": true,\n    \"subscription\": {\n      \"tier\": \"ANNUAL\",\n      \"status\": \"ACTIVE\",\n      \"expires_at\": \"2025-01-30T10:00:00Z\"\n    }\n  },\n  \"message\": \"Purchases restored successfully\"\n}"
+						},
+						{
+							"name": "No Purchases Found",
+							"originalRequest": {
+								"method": "POST",
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"platform\": \"IOS\"\n}"
+								},
+								"url": {
+									"raw": "{{base_url}}/api/v1/subscription/restore",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "subscription", "restore"]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"body": "{\n  \"success\": true,\n  \"data\": {\n    \"restored\": false,\n    \"subscription\": null\n  },\n  \"message\": \"No previous purchases found\"\n}"
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "Features",
+			"description": "Feature access and limit checking endpoints. Used to verify user permissions based on their subscription tier.",
+			"item": [
+				{
+					"name": "Check Feature Access",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/features/check?feature=ai_insights",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "features", "check"],
+							"query": [
+								{
+									"key": "feature",
+									"value": "ai_insights",
+									"description": "Feature name to check"
+								}
+							]
+						},
+						"description": "Check if the user has access to a specific feature based on their subscription tier.\n\n## Query Parameters\n- `feature` (required): Feature name to check\n\n## Available Features\n- `ai_insights`: AI-powered journal insights\n- `ai_analysis`: AI sentiment analysis\n- `voice_transcription`: Voice-to-text transcription\n- `progress_reports`: Detailed progress reports\n- `advanced_analytics`: Advanced usage analytics\n- `priority_support`: Priority customer support"
+					},
+					"response": [
+						{
+							"name": "Success - Has Access",
+							"originalRequest": {
+								"method": "GET",
+								"url": {
+									"raw": "{{base_url}}/api/v1/features/check?feature=ai_insights",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "features", "check"],
+									"query": [
+										{
+											"key": "feature",
+											"value": "ai_insights"
+										}
+									]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"body": "{\n  \"success\": true,\n  \"data\": {\n    \"feature\": \"ai_insights\",\n    \"has_access\": true,\n    \"tier\": \"MONTHLY\"\n  }\n}"
+						},
+						{
+							"name": "Success - No Access",
+							"originalRequest": {
+								"method": "GET",
+								"url": {
+									"raw": "{{base_url}}/api/v1/features/check?feature=ai_insights",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "features", "check"],
+									"query": [
+										{
+											"key": "feature",
+											"value": "ai_insights"
+										}
+									]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"body": "{\n  \"success\": true,\n  \"data\": {\n    \"feature\": \"ai_insights\",\n    \"has_access\": false,\n    \"tier\": \"FREE\",\n    \"upgrade_message\": \"Upgrade to Premium to unlock AI-powered insights\"\n  }\n}"
+						}
+					]
+				},
+				{
+					"name": "Get Journal Limit",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/features/journal-limit",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "features", "journal-limit"]
+						},
+						"description": "Check the user's journal entry usage for the current month. Free tier users are limited to 10 entries per month."
+					},
+					"response": [
+						{
+							"name": "Success - Free User",
+							"originalRequest": {
+								"method": "GET",
+								"url": {
+									"raw": "{{base_url}}/api/v1/features/journal-limit",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "features", "journal-limit"]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"body": "{\n  \"success\": true,\n  \"data\": {\n    \"tier\": \"FREE\",\n    \"limit\": 10,\n    \"used\": 7,\n    \"remaining\": 3,\n    \"resets_at\": \"2024-02-01T00:00:00Z\",\n    \"is_unlimited\": false\n  }\n}"
+						},
+						{
+							"name": "Success - Premium User",
+							"originalRequest": {
+								"method": "GET",
+								"url": {
+									"raw": "{{base_url}}/api/v1/features/journal-limit",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "features", "journal-limit"]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"body": "{\n  \"success\": true,\n  \"data\": {\n    \"tier\": \"MONTHLY\",\n    \"limit\": -1,\n    \"used\": 25,\n    \"remaining\": -1,\n    \"resets_at\": null,\n    \"is_unlimited\": true\n  }\n}"
+						}
+					]
+				},
+				{
+					"name": "Get All Feature Limits",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/features/all",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "features", "all"]
+						},
+						"description": "Get all feature limits for the user's current subscription tier."
+					},
+					"response": [
+						{
+							"name": "Success - All Features",
+							"originalRequest": {
+								"method": "GET",
+								"url": {
+									"raw": "{{base_url}}/api/v1/features/all",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "features", "all"]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"body": "{\n  \"success\": true,\n  \"data\": {\n    \"tier\": \"FREE\",\n    \"features\": {\n      \"journals_per_month\": 10,\n      \"ai_insights\": false,\n      \"ai_analysis\": false,\n      \"voice_transcription\": false,\n      \"progress_reports\": false,\n      \"unlimited_tasks\": true,\n      \"ads_enabled\": true,\n      \"advanced_analytics\": false,\n      \"priority_support\": false\n    },\n    \"usage\": {\n      \"journals_this_month\": 7\n    }\n  }\n}"
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "Onboarding",
+			"description": "Onboarding flow management for new users. Tracks completion of introductory steps and exercises.\n\n## Onboarding Steps\n1. `BREATHING_EXERCISE`: Initial breathing exercise\n2. `CONSISTENCY_MESSAGE`: Understanding consistency\n3. `PROGRESS_TRACKING`: Introduction to progress tracking\n4. `MOMENTUM_BUILDING`: Building momentum concepts\n5. `TRIGGER_IDENTIFICATION`: Identifying dopamine triggers\n6. `INTENTIONAL_PLANNING`: Learning intentional planning",
+			"item": [
+				{
+					"name": "Get Onboarding Steps",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/onboarding/steps",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "onboarding", "steps"]
+						},
+						"description": "Get all onboarding steps with their completion status for the current user."
+					},
+					"response": [
+						{
+							"name": "Success - Steps List",
+							"originalRequest": {
+								"method": "GET",
+								"url": {
+									"raw": "{{base_url}}/api/v1/onboarding/steps",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "onboarding", "steps"]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"body": "{\n  \"success\": true,\n  \"data\": {\n    \"steps\": [\n      {\n        \"step_id\": \"cc0e8400-e29b-41d4-a716-446655440001\",\n        \"step_name\": \"BREATHING_EXERCISE\",\n        \"display_name\": \"Breathing Exercise\",\n        \"description\": \"Learn a calming breathing technique\",\n        \"completed\": true,\n        \"completed_at\": \"2024-01-15T10:30:00Z\",\n        \"order\": 1\n      },\n      {\n        \"step_id\": \"cc0e8400-e29b-41d4-a716-446655440002\",\n        \"step_name\": \"CONSISTENCY_MESSAGE\",\n        \"display_name\": \"The Power of Consistency\",\n        \"description\": \"Understanding why consistency matters\",\n        \"completed\": true,\n        \"completed_at\": \"2024-01-15T10:35:00Z\",\n        \"order\": 2\n      },\n      {\n        \"step_id\": null,\n        \"step_name\": \"PROGRESS_TRACKING\",\n        \"display_name\": \"Track Your Progress\",\n        \"description\": \"Learn how to track your daily progress\",\n        \"completed\": false,\n        \"completed_at\": null,\n        \"order\": 3\n      },\n      {\n        \"step_id\": null,\n        \"step_name\": \"MOMENTUM_BUILDING\",\n        \"display_name\": \"Building Momentum\",\n        \"description\": \"Understanding momentum in habit building\",\n        \"completed\": false,\n        \"completed_at\": null,\n        \"order\": 4\n      },\n      {\n        \"step_id\": null,\n        \"step_name\": \"TRIGGER_IDENTIFICATION\",\n        \"display_name\": \"Identify Your Triggers\",\n        \"description\": \"Recognize your dopamine triggers\",\n        \"completed\": false,\n        \"completed_at\": null,\n        \"order\": 5\n      },\n      {\n        \"step_id\": null,\n        \"step_name\": \"INTENTIONAL_PLANNING\",\n        \"display_name\": \"Intentional Planning\",\n        \"description\": \"Learn to plan your day intentionally\",\n        \"completed\": false,\n        \"completed_at\": null,\n        \"order\": 6\n      }\n    ],\n    \"total_steps\": 6,\n    \"completed_steps\": 2\n  }\n}"
+						}
+					]
+				},
+				{
+					"name": "Record Onboarding Step",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"step_name\": \"TRIGGER_IDENTIFICATION\",\n  \"step_data\": {\n    \"triggers\": [\n      {\n        \"activity_name\": \"Instagram scrolling\",\n        \"category\": \"SOCIAL_MEDIA\"\n      },\n      {\n        \"activity_name\": \"YouTube binge watching\",\n        \"category\": \"VIDEO\"\n      }\n    ]\n  }\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/onboarding/record-step",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "onboarding", "record-step"]
+						},
+						"description": "Record completion of an onboarding step. Some steps may include additional data like identified triggers.\n\n## Request Body\n- `step_name` (required): Name of the completed step\n- `step_data` (optional): Additional data collected during the step\n- `voice_recording_url` (optional): URL of voice recording if applicable\n- `transcription` (optional): Transcription of voice input"
+					},
+					"response": [
+						{
+							"name": "Success - Step Recorded",
+							"originalRequest": {
+								"method": "POST",
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"step_name\": \"TRIGGER_IDENTIFICATION\",\n  \"step_data\": {\n    \"triggers\": [\n      {\n        \"activity_name\": \"Instagram scrolling\",\n        \"category\": \"SOCIAL_MEDIA\"\n      }\n    ]\n  }\n}"
+								},
+								"url": {
+									"raw": "{{base_url}}/api/v1/onboarding/record-step",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "onboarding", "record-step"]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"body": "{\n  \"success\": true,\n  \"data\": {\n    \"step_id\": \"cc0e8400-e29b-41d4-a716-446655440005\",\n    \"step_name\": \"TRIGGER_IDENTIFICATION\",\n    \"completed\": true,\n    \"completed_at\": \"2024-01-15T11:00:00Z\",\n    \"triggers_saved\": 2\n  },\n  \"message\": \"Onboarding step recorded successfully\"\n}"
+						},
+						{
+							"name": "Success - Onboarding Complete",
+							"originalRequest": {
+								"method": "POST",
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"step_name\": \"INTENTIONAL_PLANNING\"\n}"
+								},
+								"url": {
+									"raw": "{{base_url}}/api/v1/onboarding/record-step",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "onboarding", "record-step"]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"body": "{\n  \"success\": true,\n  \"data\": {\n    \"step_id\": \"cc0e8400-e29b-41d4-a716-446655440006\",\n    \"step_name\": \"INTENTIONAL_PLANNING\",\n    \"completed\": true,\n    \"completed_at\": \"2024-01-15T11:15:00Z\",\n    \"onboarding_completed\": true\n  },\n  \"message\": \"Congratulations! You've completed the onboarding process.\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Get Onboarding Progress",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/onboarding/progress",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "onboarding", "progress"]
+						},
+						"description": "Get the user's overall onboarding progress including completion percentage and next step."
+					},
+					"response": [
+						{
+							"name": "Success - In Progress",
+							"originalRequest": {
+								"method": "GET",
+								"url": {
+									"raw": "{{base_url}}/api/v1/onboarding/progress",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "onboarding", "progress"]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"body": "{\n  \"success\": true,\n  \"data\": {\n    \"onboarding_completed\": false,\n    \"total_steps\": 6,\n    \"completed_steps\": 2,\n    \"completion_percentage\": 33.33,\n    \"next_step\": {\n      \"step_name\": \"PROGRESS_TRACKING\",\n      \"display_name\": \"Track Your Progress\",\n      \"description\": \"Learn how to track your daily progress\"\n    },\n    \"completed_step_names\": [\n      \"BREATHING_EXERCISE\",\n      \"CONSISTENCY_MESSAGE\"\n    ]\n  }\n}"
+						},
+						{
+							"name": "Success - Completed",
+							"originalRequest": {
+								"method": "GET",
+								"url": {
+									"raw": "{{base_url}}/api/v1/onboarding/progress",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "onboarding", "progress"]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"body": "{\n  \"success\": true,\n  \"data\": {\n    \"onboarding_completed\": true,\n    \"total_steps\": 6,\n    \"completed_steps\": 6,\n    \"completion_percentage\": 100,\n    \"next_step\": null,\n    \"completed_step_names\": [\n      \"BREATHING_EXERCISE\",\n      \"CONSISTENCY_MESSAGE\",\n      \"PROGRESS_TRACKING\",\n      \"MOMENTUM_BUILDING\",\n      \"TRIGGER_IDENTIFICATION\",\n      \"INTENTIONAL_PLANNING\"\n    ]\n  }\n}"
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "Home",
+			"description": "Home screen endpoints for dashboard data and story cards with personalized insights.",
+			"item": [
+				{
+					"name": "Get Daily Stories",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/home/stories",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "home", "stories"]
+						},
+						"description": "Get daily story cards with personalized insights about the user's activity, progress, and encouragement messages."
+					},
+					"response": [
+						{
+							"name": "Success - Stories",
+							"originalRequest": {
+								"method": "GET",
+								"url": {
+									"raw": "{{base_url}}/api/v1/home/stories",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "home", "stories"]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"body": "{\n  \"success\": true,\n  \"data\": {\n    \"stories\": [\n      {\n        \"story_id\": \"dd0e8400-e29b-41d4-a716-446655440001\",\n        \"type\": \"streak_celebration\",\n        \"title\": \"7-Day Streak! 🔥\",\n        \"description\": \"You've been consistent for a whole week! That's amazing progress.\",\n        \"icon\": \"🔥\",\n        \"color\": \"orange\",\n        \"action\": null\n      },\n      {\n        \"story_id\": \"dd0e8400-e29b-41d4-a716-446655440002\",\n        \"type\": \"mood_insight\",\n        \"title\": \"Mood Trending Up\",\n        \"description\": \"Your average mood has improved 15% compared to last week.\",\n        \"icon\": \"📈\",\n        \"color\": \"green\",\n        \"action\": {\n          \"type\": \"navigate\",\n          \"destination\": \"journal_insights\"\n        }\n      },\n      {\n        \"story_id\": \"dd0e8400-e29b-41d4-a716-446655440003\",\n        \"type\": \"affirmation\",\n        \"title\": \"Daily Affirmation\",\n        \"description\": \"Every small step forward is progress. You're doing better than you think.\",\n        \"icon\": \"💪\",\n        \"color\": \"blue\",\n        \"action\": null\n      },\n      {\n        \"story_id\": \"dd0e8400-e29b-41d4-a716-446655440004\",\n        \"type\": \"task_reminder\",\n        \"title\": \"Plan Your Day\",\n        \"description\": \"You haven't planned today yet. Take a moment to set your intentions.\",\n        \"icon\": \"📝\",\n        \"color\": \"purple\",\n        \"action\": {\n          \"type\": \"navigate\",\n          \"destination\": \"plan_day\"\n        }\n      }\n    ]\n  }\n}"
+						}
+					]
+				},
+				{
+					"name": "Get Dashboard",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/home/dashboard",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "home", "dashboard"]
+						},
+						"description": "Get home dashboard data including today's task summary, current streak, recent activity, and onboarding status."
+					},
+					"response": [
+						{
+							"name": "Success - Dashboard",
+							"originalRequest": {
+								"method": "GET",
+								"url": {
+									"raw": "{{base_url}}/api/v1/home/dashboard",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "home", "dashboard"]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"body": "{\n  \"success\": true,\n  \"data\": {\n    \"greeting\": \"Good morning, John!\",\n    \"date\": \"2024-01-30\",\n    \"today_summary\": {\n      \"has_plan\": true,\n      \"total_tasks\": 5,\n      \"completed_tasks\": 2,\n      \"completion_percentage\": 40,\n      \"top_priority\": {\n        \"task_id\": \"880e8400-e29b-41d4-a716-446655440001\",\n        \"title\": \"Complete project proposal\",\n        \"category\": \"NON_NEGOTIABLE\"\n      }\n    },\n    \"streak\": {\n      \"current\": 7,\n      \"longest\": 12,\n      \"message\": \"You're on fire! 7 days strong.\"\n    },\n    \"recent_activity\": [\n      {\n        \"type\": \"task_completed\",\n        \"title\": \"Morning meditation\",\n        \"timestamp\": \"2024-01-30T07:30:00Z\"\n      },\n      {\n        \"type\": \"journal_entry\",\n        \"title\": \"Evening reflection\",\n        \"timestamp\": \"2024-01-29T21:00:00Z\"\n      }\n    ],\n    \"onboarding\": {\n      \"completed\": true,\n      \"progress_percentage\": 100\n    },\n    \"subscription\": {\n      \"tier\": \"MONTHLY\",\n      \"status\": \"ACTIVE\"\n    }\n  }\n}"
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "Webhooks",
+			"description": "Webhook endpoints for external service integrations.\n\n## Security\nWebhook endpoints verify request signatures to ensure authenticity.",
+			"item": [
+				{
+					"name": "RevenueCat Webhook",
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{revenuecat_webhook_secret}}",
+								"description": "RevenueCat webhook authorization"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"api_version\": \"1.0\",\n  \"event\": {\n    \"aliases\": [\"550e8400-e29b-41d4-a716-446655440000\"],\n    \"app_id\": \"app123\",\n    \"app_user_id\": \"$RCAnonymousID:abc123def456\",\n    \"commission_percentage\": 0.15,\n    \"country_code\": \"US\",\n    \"currency\": \"USD\",\n    \"entitlement_id\": \"premium\",\n    \"entitlement_ids\": [\"premium\"],\n    \"environment\": \"PRODUCTION\",\n    \"event_timestamp_ms\": 1706612400000,\n    \"expiration_at_ms\": 1709290800000,\n    \"id\": \"evt_123456789\",\n    \"is_family_share\": false,\n    \"offer_code\": null,\n    \"original_app_user_id\": \"$RCAnonymousID:abc123def456\",\n    \"original_transaction_id\": \"1000000123456789\",\n    \"period_type\": \"NORMAL\",\n    \"presented_offering_id\": \"default\",\n    \"price\": 9.99,\n    \"price_in_purchased_currency\": 9.99,\n    \"product_id\": \"com.detoxdopamine.premium.monthly\",\n    \"purchased_at_ms\": 1706612400000,\n    \"store\": \"APP_STORE\",\n    \"subscriber_attributes\": {},\n    \"takehome_percentage\": 0.85,\n    \"tax_percentage\": 0,\n    \"transaction_id\": \"1000000123456790\",\n    \"type\": \"INITIAL_PURCHASE\"\n  }\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/webhooks/revenuecat",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "webhooks", "revenuecat"]
+						},
+						"description": "Handle RevenueCat webhook events for subscription lifecycle management.\n\n## Supported Event Types\n- `INITIAL_PURCHASE`: New subscription purchase\n- `RENEWAL`: Subscription renewed\n- `CANCELLATION`: Subscription cancelled\n- `EXPIRATION`: Subscription expired\n- `BILLING_ISSUE`: Payment failed\n- `PRODUCT_CHANGE`: Subscription tier changed\n\n## Security\nRequires valid RevenueCat webhook authorization header."
+					},
+					"response": [
+						{
+							"name": "Success - Event Processed",
+							"originalRequest": {
+								"method": "POST",
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"api_version\": \"1.0\",\n  \"event\": {\n    \"type\": \"INITIAL_PURCHASE\",\n    ...\n  }\n}"
+								},
+								"url": {
+									"raw": "{{base_url}}/api/v1/webhooks/revenuecat",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "webhooks", "revenuecat"]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"body": "{\n  \"success\": true,\n  \"message\": \"Webhook processed successfully\"\n}"
+						},
+						{
+							"name": "Error - Invalid Signature",
+							"originalRequest": {
+								"method": "POST",
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"event\": {...}\n}"
+								},
+								"url": {
+									"raw": "{{base_url}}/api/v1/webhooks/revenuecat",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "webhooks", "revenuecat"]
+								}
+							},
+							"status": "Unauthorized",
+							"code": 401,
+							"_postman_previewlanguage": "json",
+							"body": "{\n  \"success\": false,\n  \"error\": {\n    \"code\": \"WEBHOOK_001\",\n    \"message\": \"Invalid webhook signature\"\n  }\n}"
+						}
+					]
+				}
+			]
+		}
+	]
+}
