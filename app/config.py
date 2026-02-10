@@ -25,6 +25,9 @@ class Settings(BaseSettings):
 
     # Environment
     ENVIRONMENT: str = Field(default="development")
+
+    # Server
+    PORT: int = Field(default=8000, description="Port to bind to (Render injects this)")
     
     # Development Settings
     DEV_AUTH_DISABLED: bool = Field(
