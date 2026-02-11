@@ -79,6 +79,10 @@ class TaskCacheService:
             key = _data_key(str(user_id), target_date.isoformat())
             raw: dict[str, str] = await client.hgetall(key)
             if not raw:
+                logger.info(
+                    "task cache MISS get_tasks_for_date user=%s date=%s key=%s",
+                    user_id, target_date, key,
+                )
                 return None  # cache miss – caller will hydrate
             # Parse values, skipping the __empty__ sentinel and any
             # non-dict entries (e.g. meta leftovers).
@@ -97,9 +101,13 @@ class TaskCacheService:
                     t.get("orderIndex", 0),
                 ),
             )
+            logger.debug(
+                "task cache HIT get_tasks_for_date user=%s date=%s count=%d",
+                user_id, target_date, len(tasks),
+            )
             return tasks
         except Exception as exc:
-            logger.warning("task_cache get_tasks_for_date error: %s", exc)
+            logger.warning("task cache ERROR get_tasks_for_date user=%s date=%s: %s", user_id, target_date, exc)
             return None
 
     async def get_task(
@@ -114,10 +122,18 @@ class TaskCacheService:
             key = _data_key(str(user_id), target_date.isoformat())
             raw = await client.hget(key, task_id)
             if raw is None:
+                logger.debug(
+                    "task cache MISS get_task user=%s date=%s task=%s",
+                    user_id, target_date, task_id,
+                )
                 return None
+            logger.debug(
+                "task cache HIT get_task user=%s date=%s task=%s",
+                user_id, target_date, task_id,
+            )
             return json.loads(raw)
         except Exception as exc:
-            logger.warning("task_cache get_task error: %s", exc)
+            logger.warning("task cache ERROR get_task user=%s date=%s task=%s: %s", user_id, target_date, task_id, exc)
             return None
 
     async def get_high_priority_task(
@@ -172,6 +188,13 @@ class TaskCacheService:
                 pipe.hgetall(_meta_key(str(user_id), d.isoformat()))
             results = await pipe.execute()
 
+            hits = sum(1 for r in results if r)
+            misses = len(results) - hits
+            logger.debug(
+                "task cache get_day_summaries user=%s ref_date=%s days=%d hits=%d misses=%d",
+                user_id, reference_date, num_days, hits, misses,
+            )
+
             summaries: list[dict] = []
             for d, meta in zip(dates, results):
                 total = int(meta.get("total", 0)) if meta else 0
@@ -191,7 +214,7 @@ class TaskCacheService:
 
             return summaries
         except Exception as exc:
-            logger.warning("task_cache get_day_summaries error: %s", exc)
+            logger.warning("task cache ERROR get_day_summaries user=%s: %s", user_id, exc)
             return None
 
     # ---- writes ----------------------------------------------------------
@@ -391,9 +414,13 @@ class TaskCacheService:
             pipe.expire(dkey, _TTL_DAY)
             pipe.expire(mkey, _TTL_DAY)
             await pipe.execute()
+            logger.info(
+                "task cache HYDRATED user=%s date=%s tasks=%d completed=%d ttl=%ds",
+                user_id, target_date, total, completed, _TTL_DAY,
+            )
             return True
         except Exception as exc:
-            logger.warning("task_cache hydrate_from_db error: %s", exc)
+            logger.warning("task cache ERROR hydrate_from_db user=%s date=%s: %s", user_id, target_date, exc)
             return False
 
     async def is_hydrated(
@@ -409,9 +436,14 @@ class TaskCacheService:
         try:
             client = await get_redis()
             key = _data_key(str(user_id), target_date.isoformat())
-            return await client.exists(key) > 0
+            exists = await client.exists(key) > 0
+            logger.debug(
+                "task cache is_hydrated user=%s date=%s hydrated=%s",
+                user_id, target_date, exists,
+            )
+            return exists
         except Exception as exc:
-            logger.warning("task_cache is_hydrated error: %s", exc)
+            logger.warning("task cache ERROR is_hydrated user=%s date=%s: %s", user_id, target_date, exc)
             return None
 
     # ---- sync queue ------------------------------------------------------

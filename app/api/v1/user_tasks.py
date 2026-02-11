@@ -22,6 +22,8 @@ Endpoints:
     DELETE /{user_id}/tasks/{task_id}    — Delete a task
 """
 
+import logging
+import time
 from datetime import date, datetime, timedelta, timezone
 from typing import Annotated, Optional
 import uuid
@@ -43,6 +45,8 @@ from app.services.task_service import (
     TaskNotFoundError,
     TaskService,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -195,6 +199,7 @@ async def get_daily_tasks(
     Falls back to DB entirely if Redis is unavailable.
     DB session is only opened if needed (lazy).
     """
+    t0 = time.perf_counter()
     _verify_user_ownership(current_user, user_id)
 
     # Parse date
@@ -213,6 +218,7 @@ async def get_daily_tasks(
         query_date = date.today()
 
     # --- Cache-first read ---
+    cache_path = "cache_hit"
     tasks = await _cache.get_tasks_for_date(user_id, query_date)
 
     if tasks is None:
@@ -220,14 +226,21 @@ async def get_daily_tasks(
         hydrated = await _cache.is_hydrated(user_id, query_date)
         if hydrated is None:
             # Redis is completely unavailable — full DB fallback
+            cache_path = "db_fallback"
+            logger.info(
+                "daily_tasks path=db_fallback user=%s date=%s reason=redis_unavailable",
+                user_id, query_date,
+            )
             return await _get_daily_from_db(lazy_db, user_id, query_date)
 
+        cache_path = "hydration"
         tasks_list, summaries = await _hydrate_and_get(lazy_db, user_id, query_date)
         tasks = tasks_list
     else:
         summaries = await _cache.get_day_summaries(user_id, query_date)
         if summaries is None:
             # Summaries failed but tasks succeeded — build summaries from DB
+            cache_path = "cache_hit_partial"
             db = await lazy_db.get()
             task_service = TaskService(db)
             result = await task_service.get_daily_tasks(user_id, query_date)
@@ -243,6 +256,12 @@ async def get_daily_tasks(
             priority_task = t
         else:
             later_tasks.append(t)
+
+    elapsed_ms = (time.perf_counter() - t0) * 1000
+    logger.info(
+        "daily_tasks path=%s user=%s date=%s tasks=%d elapsed=%.1fms",
+        cache_path, user_id, query_date, len(tasks), elapsed_ms,
+    )
 
     response_data = {
         "date": query_date.isoformat(),

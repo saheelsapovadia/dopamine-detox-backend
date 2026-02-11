@@ -37,7 +37,7 @@ DEV_USER_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")
 DEV_USER_EMAIL = "dev@test.local"
 
 # Redis cache TTL for authenticated user lookup (seconds)
-_USER_AUTH_CACHE_TTL = 300  # 5 minutes
+_USER_AUTH_CACHE_TTL = 1800  # 30 minutes
 
 
 # =============================================================================
@@ -131,11 +131,15 @@ async def _get_cached_user(user_id: uuid.UUID) -> User | None:
     """Return the cached User object, or ``None`` on miss / Redis failure."""
     try:
         client = await get_redis()
-        raw = await client.get(_user_auth_cache_key(str(user_id)))
+        cache_key = _user_auth_cache_key(str(user_id))
+        raw = await client.get(cache_key)
         if raw is None:
+            logger.info("auth cache MISS user=%s key=%s", user_id, cache_key)
             return None
+        logger.debug("auth cache HIT user=%s key=%s", user_id, cache_key)
         return _build_user_from_cache(json.loads(raw))
-    except Exception:
+    except Exception as exc:
+        logger.warning("auth cache ERROR user=%s: %s", user_id, exc)
         return None
 
 
@@ -143,14 +147,19 @@ async def _cache_user(user: User) -> None:
     """Best-effort cache of a DB-loaded User into Redis."""
     try:
         client = await get_redis()
+        cache_key = _user_auth_cache_key(str(user.user_id))
         data = _serialize_user_for_cache(user)
         await client.setex(
-            _user_auth_cache_key(str(user.user_id)),
+            cache_key,
             _USER_AUTH_CACHE_TTL,
             json.dumps(data, default=str),
         )
-    except Exception:
-        pass  # non-critical; next request will just hit DB
+        logger.info(
+            "auth cache SET user=%s key=%s ttl=%ds",
+            user.user_id, cache_key, _USER_AUTH_CACHE_TTL,
+        )
+    except Exception as exc:
+        logger.warning("auth cache SET ERROR user=%s: %s", user.user_id, exc)
 
 
 # =============================================================================
@@ -220,13 +229,17 @@ async def _resolve_user_from_token(
     # Fast path — Redis cache hit
     cached = await _get_cached_user(user_id)
     if cached is not None:
+        logger.debug("auth resolved user=%s via redis cache", user_id)
         return cached
 
     # Cache miss — fall back to DB
+    logger.info("auth resolving user=%s via DB (cache miss)", user_id)
     auth_service = AuthService(db)
     user = await auth_service.get_user_by_id(user_id)
     if user is not None:
         await _cache_user(user)
+    else:
+        logger.warning("auth user=%s not found in DB", user_id)
     return user
 
 

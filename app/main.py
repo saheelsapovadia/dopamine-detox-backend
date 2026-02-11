@@ -6,11 +6,18 @@ FastAPI application entry point with middleware configuration
 and route registration.
 """
 
+import logging
 import time
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
 import newrelic.agent
+
+# Configure logging for the application (root logger defaults to WARNING)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
