@@ -62,6 +62,7 @@ class NewRelicTransactionMiddleware(BaseHTTPMiddleware):
                 ("http.status_code", response.status_code),
                 ("http.duration_ms", round(duration_ms, 2)),
                 ("http.client_ip", request.client.host if request.client else "unknown"),
+                ("environment", settings.ENVIRONMENT),
             ])
 
             # Attach user_id if present (set by auth dependency)
