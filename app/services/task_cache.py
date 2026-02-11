@@ -23,6 +23,8 @@ import uuid
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Optional
 
+import newrelic.agent
+
 from app.services.cache import get_redis
 
 logger = logging.getLogger(__name__)
@@ -46,6 +48,23 @@ def _data_key(user_id: str, dt: str) -> str:
 
 def _meta_key(user_id: str, dt: str) -> str:
     return f"tasks:meta:{user_id}:{dt}"
+
+
+def _redis_trace(operation: str, key: str = ""):
+    """
+    Return a ``newrelic.agent.DatastoreTrace`` context manager that records
+    the Redis call as a Datastore span visible in New Relic distributed traces.
+
+    Usage::
+
+        with _redis_trace("HGETALL", key):
+            raw = await client.hgetall(key)
+    """
+    return newrelic.agent.DatastoreTrace(
+        product="Redis",
+        target=key,
+        operation=operation,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -77,7 +96,8 @@ class TaskCacheService:
         try:
             client = await get_redis()
             key = _data_key(str(user_id), target_date.isoformat())
-            raw: dict[str, str] = await client.hgetall(key)
+            with _redis_trace("HGETALL", key):
+                raw: dict[str, str] = await client.hgetall(key)
             if not raw:
                 logger.info(
                     "task cache MISS get_tasks_for_date user=%s date=%s key=%s",
@@ -120,7 +140,8 @@ class TaskCacheService:
         try:
             client = await get_redis()
             key = _data_key(str(user_id), target_date.isoformat())
-            raw = await client.hget(key, task_id)
+            with _redis_trace("HGET", key):
+                raw = await client.hget(key, task_id)
             if raw is None:
                 logger.debug(
                     "task cache MISS get_task user=%s date=%s task=%s",
@@ -150,7 +171,8 @@ class TaskCacheService:
         try:
             client = await get_redis()
             key = _data_key(str(user_id), target_date.isoformat())
-            raw: dict[str, str] = await client.hgetall(key)
+            with _redis_trace("HGETALL", key):
+                raw: dict[str, str] = await client.hgetall(key)
             if not raw:
                 return None
             for field_key, v in raw.items():
@@ -186,7 +208,8 @@ class TaskCacheService:
             pipe = client.pipeline(transaction=False)
             for d in dates:
                 pipe.hgetall(_meta_key(str(user_id), d.isoformat()))
-            results = await pipe.execute()
+            with _redis_trace("PIPELINE_HGETALL", f"tasks:meta:{user_id}:*"):
+                results = await pipe.execute()
 
             hits = sum(1 for r in results if r)
             misses = len(results) - hits
@@ -247,7 +270,8 @@ class TaskCacheService:
                 pipe.hincrby(mkey, "completed", 1)
             pipe.expire(dkey, _TTL_DAY)
             pipe.expire(mkey, _TTL_DAY)
-            await pipe.execute()
+            with _redis_trace("PIPELINE_HSET", dkey):
+                await pipe.execute()
             return True
         except Exception as exc:
             logger.warning("task_cache set_task error: %s", exc)
@@ -282,7 +306,8 @@ class TaskCacheService:
                 pipe.hincrby(mkey, "completed", completed)
             pipe.expire(dkey, _TTL_DAY)
             pipe.expire(mkey, _TTL_DAY)
-            await pipe.execute()
+            with _redis_trace("PIPELINE_BATCH_HSET", dkey):
+                await pipe.execute()
             return True
         except Exception as exc:
             logger.warning("task_cache set_tasks_batch error: %s", exc)
@@ -308,7 +333,8 @@ class TaskCacheService:
             dkey = _data_key(uid, dt)
             mkey = _meta_key(uid, dt)
 
-            raw = await client.hget(dkey, task_id)
+            with _redis_trace("HGET", dkey):
+                raw = await client.hget(dkey, task_id)
             if raw is None:
                 return None
             task = json.loads(raw)
@@ -330,7 +356,8 @@ class TaskCacheService:
 
             pipe.expire(dkey, _TTL_DAY)
             pipe.expire(mkey, _TTL_DAY)
-            await pipe.execute()
+            with _redis_trace("PIPELINE_HSET", dkey):
+                await pipe.execute()
             return task
         except Exception as exc:
             logger.warning("task_cache update_task error: %s", exc)
@@ -362,7 +389,8 @@ class TaskCacheService:
                 pipe.hincrby(mkey, "completed", -1)
             pipe.expire(dkey, _TTL_DAY)
             pipe.expire(mkey, _TTL_DAY)
-            await pipe.execute()
+            with _redis_trace("PIPELINE_HDEL", dkey):
+                await pipe.execute()
             return True
         except Exception as exc:
             logger.warning("task_cache delete_task error: %s", exc)
@@ -413,7 +441,8 @@ class TaskCacheService:
 
             pipe.expire(dkey, _TTL_DAY)
             pipe.expire(mkey, _TTL_DAY)
-            await pipe.execute()
+            with _redis_trace("PIPELINE_HYDRATE", dkey):
+                await pipe.execute()
             logger.info(
                 "task cache HYDRATED user=%s date=%s tasks=%d completed=%d ttl=%ds",
                 user_id, target_date, total, completed, _TTL_DAY,
@@ -436,7 +465,8 @@ class TaskCacheService:
         try:
             client = await get_redis()
             key = _data_key(str(user_id), target_date.isoformat())
-            exists = await client.exists(key) > 0
+            with _redis_trace("EXISTS", key):
+                exists = await client.exists(key) > 0
             logger.debug(
                 "task cache is_hydrated user=%s date=%s hydrated=%s",
                 user_id, target_date, exists,
@@ -468,12 +498,13 @@ class TaskCacheService:
                 "op": op,
                 "payload": json.dumps(data, default=str),
             }
-            await client.xadd(
-                _SYNC_STREAM,
-                entry,
-                maxlen=_SYNC_MAXLEN,
-                approximate=True,
-            )
+            with _redis_trace("XADD", _SYNC_STREAM):
+                await client.xadd(
+                    _SYNC_STREAM,
+                    entry,
+                    maxlen=_SYNC_MAXLEN,
+                    approximate=True,
+                )
             return True
         except Exception as exc:
             logger.warning("task_cache enqueue_sync error: %s", exc)

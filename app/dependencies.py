@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from typing import Annotated, Optional
 import uuid
 
+import newrelic.agent
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -132,7 +133,8 @@ async def _get_cached_user(user_id: uuid.UUID) -> User | None:
     try:
         client = await get_redis()
         cache_key = _user_auth_cache_key(str(user_id))
-        raw = await client.get(cache_key)
+        with newrelic.agent.DatastoreTrace(product="Redis", target=cache_key, operation="GET"):
+            raw = await client.get(cache_key)
         if raw is None:
             logger.info("auth cache MISS user=%s key=%s", user_id, cache_key)
             return None
@@ -149,11 +151,12 @@ async def _cache_user(user: User) -> None:
         client = await get_redis()
         cache_key = _user_auth_cache_key(str(user.user_id))
         data = _serialize_user_for_cache(user)
-        await client.setex(
-            cache_key,
-            _USER_AUTH_CACHE_TTL,
-            json.dumps(data, default=str),
-        )
+        with newrelic.agent.DatastoreTrace(product="Redis", target=cache_key, operation="SETEX"):
+            await client.setex(
+                cache_key,
+                _USER_AUTH_CACHE_TTL,
+                json.dumps(data, default=str),
+            )
         logger.info(
             "auth cache SET user=%s key=%s ttl=%ds",
             user.user_id, cache_key, _USER_AUTH_CACHE_TTL,

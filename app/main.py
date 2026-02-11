@@ -18,9 +18,8 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.config import settings
 from app.db.session import init_db, close_db
@@ -30,47 +29,69 @@ from app.core.errors import setup_exception_handlers
 
 
 # =============================================================================
-# New Relic Transaction Enrichment Middleware
+# New Relic Transaction Enrichment Middleware (Raw ASGI)
 # =============================================================================
 
-class NewRelicTransactionMiddleware(BaseHTTPMiddleware):
+class NewRelicTransactionMiddleware:
     """
-    Lightweight middleware that enriches every New Relic transaction with
+    Raw ASGI middleware that enriches every New Relic transaction with
     custom attributes for better filtering, alerting, and dashboarding.
-    
+
+    Uses raw ASGI instead of BaseHTTPMiddleware to preserve the async
+    context chain.  BaseHTTPMiddleware's ``call_next()`` spawns the
+    route handler in a separate task, which breaks New Relic's
+    contextvars-based span propagation — causing Redis, DB, and other
+    child spans to disappear from traces.
+
     Captures: response status, latency, HTTP method, route pattern, and
     user ID (when authenticated).
     """
 
-    async def dispatch(self, request: Request, call_next):
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
         start = time.perf_counter()
+        status_code = 500  # default until we capture the real one
 
-        response = await call_next(request)
+        async def send_wrapper(message):
+            nonlocal status_code
+            if message["type"] == "http.response.start":
+                status_code = message["status"]
+            await send(message)
 
-        duration_ms = (time.perf_counter() - start) * 1000
+        try:
+            await self.app(scope, receive, send_wrapper)
+        finally:
+            duration_ms = (time.perf_counter() - start) * 1000
 
-        # Add custom attributes to the current New Relic transaction
-        txn = newrelic.agent.current_transaction()
-        if txn:
-            # Route pattern (e.g. "/api/v1/tasks/{task_id}") for grouping
-            route = request.scope.get("route")
-            route_path = route.path if route else request.url.path
+            txn = newrelic.agent.current_transaction()
+            if txn:
+                # Route pattern (e.g. "/api/v1/tasks/{task_id}") for grouping
+                route = scope.get("route")
+                route_path = route.path if route else scope.get("path", "unknown")
 
-            newrelic.agent.add_custom_attributes([
-                ("http.method", request.method),
-                ("http.route", route_path),
-                ("http.status_code", response.status_code),
-                ("http.duration_ms", round(duration_ms, 2)),
-                ("http.client_ip", request.client.host if request.client else "unknown"),
-                ("environment", settings.ENVIRONMENT),
-            ])
+                client = scope.get("client")
+                client_ip = client[0] if client else "unknown"
 
-            # Attach user_id if present (set by auth dependency)
-            user_id = getattr(request.state, "user_id", None)
-            if user_id:
-                newrelic.agent.add_custom_attribute("enduser.id", str(user_id))
+                newrelic.agent.add_custom_attributes([
+                    ("http.method", scope.get("method", "")),
+                    ("http.route", route_path),
+                    ("http.status_code", status_code),
+                    ("http.duration_ms", round(duration_ms, 2)),
+                    ("http.client_ip", client_ip),
+                    ("environment", settings.ENVIRONMENT),
+                ])
 
-        return response
+                # Attach user_id if present (set by auth dependency)
+                state = scope.get("state")
+                user_id = getattr(state, "user_id", None) if state else None
+                if user_id:
+                    newrelic.agent.add_custom_attribute("enduser.id", str(user_id))
 
 
 _sync_worker: TaskSyncWorker | None = None
