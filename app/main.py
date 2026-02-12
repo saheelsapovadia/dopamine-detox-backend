@@ -132,12 +132,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         print(f"⚠️ Redis connection failed: {e}")
     
     # Start task sync worker (write-behind cache → PostgreSQL)
-    try:
-        _sync_worker = TaskSyncWorker()
-        await _sync_worker.start()
-    except Exception as e:
-        print(f"⚠️ Task sync worker failed to start: {e}")
-        _sync_worker = None
+    # DISABLED: Upstash Redis free-tier request limit (500k) exhausted;
+    #           the worker loop burns requests on every iteration.
+    # try:
+    #     _sync_worker = TaskSyncWorker()
+    #     await _sync_worker.start()
+    # except Exception as e:
+    #     print(f"⚠️ Task sync worker failed to start: {e}")
+    #     _sync_worker = None
     
     yield
     
@@ -262,3 +264,7 @@ app.include_router(features.router, prefix="/api/v1/features", tags=["Features"]
 # Phase 15: User-scoped Tasks (HomeScreen v2 API)
 from app.api.v1 import user_tasks
 app.include_router(user_tasks.router, prefix="/api/v1/users", tags=["User Tasks"])
+
+# Real-time Speech-to-Text (WebSocket)
+from app.api.v1 import journal_stream
+app.include_router(journal_stream.router, prefix="/api/v1/journal", tags=["Journal Stream"])

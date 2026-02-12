@@ -59,6 +59,8 @@ docker-compose logs -f api
 docker-compose down
 ```
 
+nohup bash scripts/keep_alive.sh > keep_alive.log 2>&1 &
+
 ## API Documentation
 
 When running in development mode, documentation is available at:
