@@ -8,9 +8,12 @@ Integration with Google Gemini via LangChain for:
 """
 
 import json
+import logging
 from typing import Any, Optional
 
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 class GeminiLLMService:
@@ -217,6 +220,67 @@ Example output:
             print(f"Journal analysis error: {e}")
             return None
     
+    async def analyze_journal_for_mobile(
+        self,
+        transcript: str,
+    ) -> Optional[dict]:
+        """
+        Lightweight journal analysis for the mobile voice-journal flow.
+
+        Returns a simplified response suitable for the mobile UI:
+        ``{"insights": [...], "mood": "...", "moodType": "..."}``
+
+        *moodType* is one of: energized, tired, deep, calm, anxious, happy, neutral.
+        """
+        prompt = f"""You are an empathetic AI coach for a dopamine-detox / mindfulness app.
+Analyze the following journal transcript and return a JSON object with exactly
+these three fields:
+
+1. "insights" – a JSON array of 2-4 short insight tags (strings, max 25 chars each)
+   that capture the key themes, emotions, or patterns.  Examples: "Deep Reflection",
+   "Evening Calm", "Digital Detox", "Growth Mindset".
+
+2. "mood" – a short human-readable mood label (max 40 chars).
+   Examples: "Feeling contemplative", "Energized and hopeful".
+
+3. "moodType" – exactly one of: energized, tired, deep, calm, anxious, happy, neutral
+
+Respond ONLY with a valid JSON object.  No markdown, no explanation.
+
+Transcript:
+{transcript}"""
+
+        try:
+            response = await self.llm.ainvoke(prompt)
+            content = response.content.strip()
+
+            # Strip markdown fences if present
+            if content.startswith("```"):
+                content = content.split("```")[1]
+                if content.startswith("json"):
+                    content = content[4:]
+
+            result = json.loads(content)
+
+            # Validate required keys
+            for key in ("insights", "mood", "moodType"):
+                if key not in result:
+                    logger.warning("Missing key '%s' in mobile analysis", key)
+                    return None
+
+            # Clamp moodType to allowed values
+            allowed = {"energized", "tired", "deep", "calm", "anxious", "happy", "neutral"}
+            if result["moodType"] not in allowed:
+                result["moodType"] = "neutral"
+
+            return result
+
+        except json.JSONDecodeError as e:
+            logger.error("JSON parse error in mobile journal analysis: %s", e)
+            return None
+        except Exception as e:
+            logger.error("Mobile journal analysis error: %s", e)
+            return None
 
 
 # Singleton instance

@@ -2,10 +2,12 @@
 Journal API Endpoints
 =====================
 
-Handles journal entry CRUD, listing, and insights.
+Handles journal entry CRUD, listing, insights, and the voice-journal
+flow (analyze transcript + save with audio).
 """
 
-from datetime import date
+import logging
+from datetime import date, datetime, timezone
 from typing import Annotated, Optional
 import uuid
 
@@ -16,14 +18,24 @@ from app.db.session import get_db
 from app.dependencies import CurrentUser
 from app.models.journal import MoodRating
 from app.schemas.journal import (
+    AnalyzeRequest,
+    AnalyzeResponse,
     JournalCreateResponse,
     JournalDetailResponse,
     JournalEntryCreate,
     JournalEntryUpdate,
     JournalListResponse,
+    MoodType,
+    VoiceJournalCreate,
+    VoiceJournalResponse,
 )
+from app.services.audio_session_store import get_session, remove_session
+from app.services.azure_storage import get_storage_service
 from app.services.cache import CacheInvalidator, CacheKeys, CacheManager
+from app.services.gemini_llm import get_gemini_service
 from app.services.journal_service import JournalService
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -173,6 +185,255 @@ async def create_journal_entry(
         },
         message="Journal entry created successfully",
     )
+
+
+# =========================================================================
+# Voice-Journal Flow Endpoints
+# =========================================================================
+
+
+@router.post(
+    "/analyze",
+    response_model=AnalyzeResponse,
+)
+async def analyze_transcript(
+    body: AnalyzeRequest,
+    current_user: CurrentUser,
+):
+    """
+    Analyze a journal transcript with AI **before** saving.
+
+    Returns insight tags, a mood label, and a mood category so the
+    mobile client can display them on the review screen.  This is
+    non-blocking — if it fails the user can still save without insights.
+    """
+    gemini = get_gemini_service()
+
+    try:
+        result = await gemini.analyze_journal_for_mobile(body.transcript)
+    except Exception as e:
+        logger.error("Gemini analysis failed: %s", e, exc_info=True)
+        # Graceful fallback — don't block the user
+        return AnalyzeResponse(
+            insights=[],
+            mood="Reflective moment",
+            moodType=MoodType.NEUTRAL,
+        )
+
+    if result is None:
+        return AnalyzeResponse(
+            insights=[],
+            mood="Reflective moment",
+            moodType=MoodType.NEUTRAL,
+        )
+
+    return AnalyzeResponse(
+        insights=result.get("insights", []),
+        mood=result.get("mood", "Reflective moment"),
+        moodType=MoodType(result.get("moodType", "neutral")),
+    )
+
+
+@router.get(
+    "/",
+    response_model=list[VoiceJournalResponse],
+)
+async def get_voice_journal_entries(
+    current_user: CurrentUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    page: int = Query(default=1, ge=1),
+    limit: int = Query(default=20, ge=1, le=50),
+):
+    """
+    Get the authenticated user's journal entries in the mobile-friendly
+    ``VoiceJournalResponse`` shape.
+
+    Returns newest-first, paginated.
+    """
+    journal_service = JournalService(db)
+
+    result = await journal_service.get_entries_paginated(
+        user_id=current_user.user_id,
+        page=page,
+        limit=limit,
+    )
+
+    user_id_str = str(current_user.user_id)
+    today = date.today()
+    entries: list[VoiceJournalResponse] = []
+
+    for entry in result["entries"]:
+        # Friendly date label
+        if entry.date == today:
+            date_label = "Today"
+        else:
+            try:
+                from datetime import timedelta
+                if entry.date == today - timedelta(days=1):
+                    date_label = "Yesterday"
+                else:
+                    date_label = entry.date.strftime("%b %d, %Y")
+            except Exception:
+                date_label = entry.date.strftime("%b %d, %Y")
+
+        created = entry.created_at or datetime.now(timezone.utc)
+
+        # Resolve audio duration from metrics
+        audio_duration = None
+        for metric in entry.metrics:
+            if metric.metric_type.value == "voice_intensity":
+                audio_duration = metric.duration_seconds
+                break
+
+        # Resolve AI insight tags
+        ai_insights = [i.title for i in entry.insights] if entry.insights else []
+
+        # Map MoodRating → MoodType (reverse of save mapping)
+        mood_type_map = {
+            "great": MoodType.ENERGIZED,
+            "good": MoodType.HAPPY,
+            "calm": MoodType.CALM,
+            "stressed": MoodType.ANXIOUS,
+            "overwhelmed": MoodType.TIRED,
+        }
+        mood_type = MoodType.NEUTRAL
+        if entry.mood_rating:
+            mood_type = mood_type_map.get(entry.mood_rating.value, MoodType.NEUTRAL)
+
+        entries.append(VoiceJournalResponse(
+            id=str(entry.entry_id),
+            userId=user_id_str,
+            dateLabel=date_label,
+            time=created.strftime("%I:%M %p").lstrip("0"),
+            mood=entry.primary_emotion or "Deep thoughts",
+            moodType=mood_type,
+            content=entry.entry_text or entry.transcription or "",
+            audioUrl=entry.voice_recording_url,
+            audioDurationSecs=float(audio_duration) if audio_duration else None,
+            aiInsights=ai_insights,
+            createdAt=created.isoformat(),
+            updatedAt=(entry.updated_at or created).isoformat(),
+        ))
+
+    return entries
+
+
+@router.post(
+    "/",
+    response_model=VoiceJournalResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def save_voice_journal(
+    body: VoiceJournalCreate,
+    current_user: CurrentUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """
+    Save a voice-journal entry.
+
+    1. Looks up accumulated audio by ``sessionId`` from the WebSocket
+       streaming session.
+    2. Uploads the audio to Azure Blob Storage to generate a permanent
+       ``audioUrl``.
+    3. Persists the journal entry with transcript, mood, insights, and
+       audio reference.
+    4. Returns the complete ``JournalEntry`` object.
+    """
+    journal_service = JournalService(db)
+    user_id = current_user.user_id
+
+    # ------------------------------------------------------------------
+    # 1. Resolve audio from session buffer → upload to Azure
+    # ------------------------------------------------------------------
+    audio_url: Optional[str] = body.audioUrl
+
+    if body.sessionId and not audio_url:
+        audio_session = get_session(body.sessionId)
+        if audio_session and audio_session.total_bytes > 0:
+            try:
+                storage = get_storage_service()
+                upload_result = await storage.upload_voice_recording(
+                    user_id=str(user_id),
+                    file_content=audio_session.get_audio(),
+                    recording_type="journal",
+                    file_format="wav",
+                    reference_id=body.sessionId,
+                )
+                audio_url = upload_result.get("sas_url") or upload_result.get("blob_url")
+                logger.info(
+                    "Uploaded journal audio for session %s (%d bytes)",
+                    body.sessionId,
+                    audio_session.total_bytes,
+                )
+            except Exception as e:
+                logger.error(
+                    "Failed to upload audio for session %s: %s",
+                    body.sessionId,
+                    e,
+                    exc_info=True,
+                )
+                # Non-fatal — save the entry without audio
+            finally:
+                # Free memory regardless of upload success
+                remove_session(body.sessionId)
+
+    # ------------------------------------------------------------------
+    # 2. Persist the journal entry
+    # ------------------------------------------------------------------
+    entry = await journal_service.create_voice_entry(
+        user_id=user_id,
+        content=body.content,
+        audio_url=audio_url,
+        audio_duration_secs=body.audioDurationSecs,
+        mood_label=body.mood,
+        mood_type=body.moodType.value if body.moodType else None,
+        ai_insights=body.aiInsights,
+    )
+
+    await db.commit()
+
+    # ------------------------------------------------------------------
+    # 3. Invalidate cache
+    # ------------------------------------------------------------------
+    user_id_str = str(user_id)
+    await CacheInvalidator.on_journal_create(
+        user_id_str,
+        entry.date.isoformat(),
+    )
+
+    # ------------------------------------------------------------------
+    # 4. Build response in the shape the mobile app expects
+    # ------------------------------------------------------------------
+    now = entry.created_at or datetime.now(timezone.utc)
+
+    # Friendly date label
+    today = date.today()
+    if entry.date == today:
+        date_label = "Today"
+    elif entry.date == today.replace(day=today.day - 1) if today.day > 1 else today:
+        date_label = "Yesterday"
+    else:
+        date_label = entry.date.strftime("%b %d, %Y")
+
+    return VoiceJournalResponse(
+        id=str(entry.entry_id),
+        userId=user_id_str,
+        dateLabel=date_label,
+        time=now.strftime("%I:%M %p").lstrip("0"),
+        mood=body.mood or "Deep thoughts",
+        moodType=body.moodType or MoodType.DEEP,
+        content=body.content,
+        audioUrl=audio_url,
+        audioDurationSecs=body.audioDurationSecs,
+        aiInsights=body.aiInsights or [],
+        createdAt=now.isoformat(),
+        updatedAt=now.isoformat(),
+    )
+
+
+# =========================================================================
+# Existing CRUD Endpoints
+# =========================================================================
 
 
 @router.get(

@@ -157,8 +157,7 @@ async def _hydrate_and_get(
     """
     db = await lazy_db.get()
     task_service = TaskService(db)
-    db_tasks = await task_service.get_tasks_for_date(user_id, query_date)
-    task_dicts = [_task_to_api(t) for t in db_tasks]
+    task_dicts = await task_service.get_tasks_for_date_as_dicts(user_id, query_date)
 
     # Hydrate cache (best-effort)
     await _cache.hydrate_from_db(user_id, query_date, task_dicts)
@@ -308,13 +307,11 @@ async def create_user_task(
         # Ensure cache is hydrated so we can check
         hydrated = await _cache.is_hydrated(user_id, task_date)
         if hydrated is False:
-            # Hydrate first
+            # Hydrate first (raw SQL — avoids ORM enum introspection)
             db = await lazy_db.get()
             task_service = TaskService(db)
-            db_tasks = await task_service.get_tasks_for_date(user_id, task_date)
-            await _cache.hydrate_from_db(
-                user_id, task_date, [_task_to_api(t) for t in db_tasks],
-            )
+            task_dicts = await task_service.get_tasks_for_date_as_dicts(user_id, task_date)
+            await _cache.hydrate_from_db(user_id, task_date, task_dicts)
         if hydrated is None:
             # Redis unavailable — fall back to DB for the whole operation
             return await _create_task_db_fallback(lazy_db, current_user, user_id, body, task_date)
@@ -422,15 +419,13 @@ async def batch_create_user_tasks(
         )
 
     if high_count == 1:
-        # Ensure cache hydrated
+        # Ensure cache hydrated (raw SQL — avoids ORM enum introspection)
         hydrated = await _cache.is_hydrated(user_id, task_date)
         if hydrated is False:
             db = await lazy_db.get()
             task_service = TaskService(db)
-            db_tasks = await task_service.get_tasks_for_date(user_id, task_date)
-            await _cache.hydrate_from_db(
-                user_id, task_date, [_task_to_api(t) for t in db_tasks],
-            )
+            task_dicts = await task_service.get_tasks_for_date_as_dicts(user_id, task_date)
+            await _cache.hydrate_from_db(user_id, task_date, task_dicts)
         if hydrated is None:
             return await _batch_create_db_fallback(
                 lazy_db, current_user, user_id, body, task_date,
@@ -582,12 +577,11 @@ async def batch_update_user_tasks(
             lazy_db, current_user, user_id, body, task_date,
         )
     if hydrated is False:
+        # Raw SQL — avoids ORM enum introspection overhead
         db = await lazy_db.get()
         task_service = TaskService(db)
-        db_tasks = await task_service.get_tasks_for_date(user_id, task_date)
-        await _cache.hydrate_from_db(
-            user_id, task_date, [_task_to_api(t) for t in db_tasks],
-        )
+        task_dicts = await task_service.get_tasks_for_date_as_dicts(user_id, task_date)
+        await _cache.hydrate_from_db(user_id, task_date, task_dicts)
 
     # --- Identify new high-priority and demote existing if needed ---
     new_high_id: Optional[str] = None
@@ -614,6 +608,7 @@ async def batch_update_user_tasks(
     updated_summaries: list[dict] = []
     sync_tasks: list[dict] = []
     now_iso = datetime.now(timezone.utc).isoformat()
+    _rehydrated = False  # Track whether we already re-hydrated this request
 
     for item in body.tasks:
         updates: dict = {}
@@ -633,13 +628,26 @@ async def batch_update_user_tasks(
         if not updates:
             # Nothing to update for this item, but still include in response
             cached_task = await _cache.get_task(user_id, task_date, item.id)
+            if cached_task is None and not _rehydrated:
+                # Stale cache — re-hydrate from DB and retry once
+                _rehydrated = True
+                logger.info(
+                    "batch_update stale cache, re-hydrating user=%s date=%s task=%s",
+                    user_id, task_date, item.id,
+                )
+                db = await lazy_db.get()
+                task_service = TaskService(db)
+                fresh = await task_service.get_tasks_for_date_as_dicts(user_id, task_date)
+                await _cache.hydrate_from_db(user_id, task_date, fresh)
+                cached_task = await _cache.get_task(user_id, task_date, item.id)
             if cached_task is None:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail={
-                        "code": "VALIDATION_ERROR",
-                        "message": f"Task {item.id} not found for date {task_date.isoformat()}",
-                    },
+                # Still not found after re-hydration — fall back to DB path
+                logger.warning(
+                    "batch_update task not found after re-hydration, falling back to DB user=%s date=%s task=%s",
+                    user_id, task_date, item.id,
+                )
+                return await _batch_update_db_fallback(
+                    lazy_db, current_user, user_id, body, task_date,
                 )
             updated_summaries.append({
                 "id": cached_task["id"],
@@ -653,14 +661,28 @@ async def batch_update_user_tasks(
         updated_task = await _cache.update_task(
             user_id, task_date, item.id, updates,
         )
+        if updated_task is None and not _rehydrated:
+            # Stale cache — re-hydrate from DB and retry once
+            _rehydrated = True
+            logger.info(
+                "batch_update stale cache, re-hydrating user=%s date=%s task=%s",
+                user_id, task_date, item.id,
+            )
+            db = await lazy_db.get()
+            task_service = TaskService(db)
+            fresh = await task_service.get_tasks_for_date_as_dicts(user_id, task_date)
+            await _cache.hydrate_from_db(user_id, task_date, fresh)
+            updated_task = await _cache.update_task(
+                user_id, task_date, item.id, updates,
+            )
         if updated_task is None:
-            # Task not found in cache — could be Redis error or missing task
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail={
-                    "code": "VALIDATION_ERROR",
-                    "message": f"Task {item.id} not found for date {task_date.isoformat()}",
-                },
+            # Still not found after re-hydration — fall back to DB path
+            logger.warning(
+                "batch_update task not found after re-hydration, falling back to DB user=%s date=%s task=%s",
+                user_id, task_date, item.id,
+            )
+            return await _batch_update_db_fallback(
+                lazy_db, current_user, user_id, body, task_date,
             )
 
         updated_summaries.append({
@@ -797,13 +819,13 @@ async def update_user_task_status(
         task_dict = _task_to_api(db_task)
         task_date_str = db_task.due_date.isoformat() if db_task.due_date else today.isoformat()
         # Hydrate this date's tasks into cache for future requests
-        db_tasks = await task_service.get_tasks_for_date(
+        # (raw SQL — avoids ORM enum introspection overhead)
+        hydration_dicts = await task_service.get_tasks_for_date_as_dicts(
             current_user.user_id,
             db_task.due_date or today,
         )
         await _cache.hydrate_from_db(
-            user_id, db_task.due_date or today,
-            [_task_to_api(t) for t in db_tasks],
+            user_id, db_task.due_date or today, hydration_dicts,
         )
 
     target_date = date.fromisoformat(task_date_str)

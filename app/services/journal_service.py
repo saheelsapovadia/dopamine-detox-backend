@@ -148,7 +148,10 @@ class JournalService:
         entries_stmt = (
             select(JournalEntry)
             .where(and_(*conditions))
-            .options(selectinload(JournalEntry.insights))
+            .options(
+                selectinload(JournalEntry.insights),
+                selectinload(JournalEntry.metrics),
+            )
             .order_by(JournalEntry.date.desc())
             .offset(offset)
             .limit(limit)
@@ -234,6 +237,76 @@ class JournalService:
         self.db.add(insight)
         await self.db.flush()
         return insight
+
+    async def create_voice_entry(
+        self,
+        user_id: uuid.UUID,
+        content: str,
+        audio_url: Optional[str] = None,
+        audio_duration_secs: Optional[float] = None,
+        mood_label: Optional[str] = None,
+        mood_type: Optional[str] = None,
+        ai_insights: Optional[list[str]] = None,
+    ) -> JournalEntry:
+        """
+        Create a voice-journal entry with optional audio URL and AI insights.
+
+        Maps the simplified mobile *mood_type* to the nearest
+        :class:`MoodRating` and stores insights as ``JournalInsight`` rows.
+        """
+        # Map mobile moodType → MoodRating (best effort)
+        _mood_map: dict[str, MoodRating] = {
+            "energized": MoodRating.GREAT,
+            "happy": MoodRating.GREAT,
+            "calm": MoodRating.CALM,
+            "deep": MoodRating.GOOD,
+            "neutral": MoodRating.GOOD,
+            "tired": MoodRating.STRESSED,
+            "anxious": MoodRating.OVERWHELMED,
+        }
+        mood_rating = _mood_map.get(mood_type or "", None)
+
+        entry = JournalEntry(
+            user_id=user_id,
+            date=date.today(),
+            entry_text=content,
+            transcription=content,
+            voice_recording_url=audio_url,
+            is_voice_entry=True,
+            mood_rating=mood_rating,
+            primary_emotion=mood_label,
+            summary=content[:200] if content else None,
+        )
+        self.db.add(entry)
+        await self.db.flush()
+
+        # Persist AI insight tags as JournalInsight rows
+        if ai_insights:
+            from app.models.journal import InsightType
+
+            for tag in ai_insights[:5]:  # cap at 5
+                insight = JournalInsight(
+                    entry_id=entry.entry_id,
+                    insight_type=InsightType.EMOTIONAL_AWARENESS,
+                    title=tag[:100],
+                    description=tag,
+                )
+                self.db.add(insight)
+
+        # Persist audio duration as a DailyMetric
+        if audio_duration_secs is not None:
+            from app.models.journal import MetricType
+
+            metric = DailyMetric(
+                entry_id=entry.entry_id,
+                metric_type=MetricType.VOICE_INTENSITY,
+                duration_seconds=int(audio_duration_secs),
+            )
+            self.db.add(metric)
+
+        await self.db.flush()
+
+        return entry
 
     async def get_mood_distribution(
         self,

@@ -56,6 +56,9 @@ class Settings(BaseSettings):
     GOOGLE_GEMINI_API_KEY: str = Field(default="")
     GEMINI_MODEL: str = Field(default="gemini-1.5-flash")
 
+    # Deepgram (real-time speech-to-text)
+    DEEPGRAM_API_KEY: str = Field(default="")
+
     # JWT Authentication
     JWT_SECRET: str = Field(default="change-this-secret-in-production")
     JWT_ALGORITHM: str = Field(default="HS256")
