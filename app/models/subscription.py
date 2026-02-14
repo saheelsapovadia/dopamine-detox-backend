@@ -51,12 +51,17 @@ class SubscriptionEventType(str, Enum):
     PURCHASE = "purchase"
     RENEWAL = "renewal"
     CANCELLATION = "cancellation"
+    UNCANCELLATION = "uncancellation"
     EXPIRATION = "expiration"
     REACTIVATION = "reactivation"
     UPGRADE = "upgrade"
     DOWNGRADE = "downgrade"
     REFUND = "refund"
     BILLING_ISSUE = "billing_issue"
+    SUBSCRIPTION_PAUSED = "subscription_paused"
+    NON_RENEWING_PURCHASE = "non_renewing_purchase"
+    TRANSFER = "transfer"
+    PRODUCT_CHANGE = "product_change"
 
 
 class Platform(str, Enum):

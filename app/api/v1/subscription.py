@@ -5,23 +5,20 @@ Subscription API Endpoints
 Handles subscription packages, purchases, status, and management.
 """
 
+import logging
 from datetime import date
-from typing import Annotated, Optional
-import uuid
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
 from app.dependencies import CurrentUser
-from app.core.feature_limits import FEATURE_LIMITS, get_feature_limits, has_feature
+from app.core.feature_limits import FEATURE_LIMITS, get_feature_limits
 from app.models.subscription import Subscription, SubscriptionStatus, SubscriptionTier
 from app.schemas.subscription import (
     CancelRequest,
     CancelResponse,
-    FeatureCheckResponse,
-    JournalLimitResponse,
     PackagesResponse,
     PurchaseRequest,
     PurchaseResponse,
@@ -31,7 +28,8 @@ from app.schemas.subscription import (
 )
 from app.services.cache import CacheInvalidator, CacheKeys, CacheManager
 from app.services.revenuecat import RevenueCatService
-from app.services.journal_service import JournalService
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -126,27 +124,31 @@ async def get_packages(
     cached = await CacheManager.get(cache_key)
     if cached:
         # Add current subscription info
-        cached["current_subscription"] = await _get_current_subscription_info(current_user)
+        cached["current_subscription"] = await _get_current_subscription_info(
+            current_user
+        )
         return PackagesResponse(success=True, data=cached)
-    
+
     # Build feature comparison
     feature_comparison = {
         tier: limits for tier, limits in FEATURE_LIMITS.items()
     }
-    
+
     response_data = {
         "packages": PACKAGES,
-        "current_subscription": await _get_current_subscription_info(current_user),
+        "current_subscription": await _get_current_subscription_info(
+            current_user
+        ),
         "feature_comparison": feature_comparison,
     }
-    
+
     # Cache packages (without current_subscription)
     cache_data = {
         "packages": PACKAGES,
         "feature_comparison": feature_comparison,
     }
     await CacheManager.set(cache_key, cache_data, ttl=CacheManager.TTL_HOUR)
-    
+
     return PackagesResponse(success=True, data=response_data)
 
 
@@ -158,7 +160,8 @@ async def _get_current_subscription_info(user) -> dict:
             "status": user.subscription.status.value,
             "expires_at": (
                 user.subscription.expires_at.isoformat()
-                if user.subscription.expires_at else None
+                if user.subscription.expires_at
+                else None
             ),
         }
     return {
@@ -179,7 +182,7 @@ async def purchase_subscription(
 ):
     """
     Verify and activate subscription purchase.
-    
+
     The actual payment is handled by RevenueCat SDK on the client.
     This endpoint verifies the purchase and activates the subscription.
     """
@@ -188,7 +191,7 @@ async def purchase_subscription(
         (p for p in PACKAGES if p["package_id"] == purchase_data.package_id),
         None,
     )
-    
+
     if package is None or package["tier"] == "free":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -197,7 +200,7 @@ async def purchase_subscription(
                 "message": "Invalid subscription package",
             },
         )
-    
+
     # Check if already has active premium subscription
     if current_user.subscription and current_user.subscription.is_premium:
         if current_user.subscription.status == SubscriptionStatus.ACTIVE:
@@ -208,23 +211,25 @@ async def purchase_subscription(
                     "message": "Active subscription already exists",
                 },
             )
-    
+
     # Process purchase with RevenueCat
     revenuecat_service = RevenueCatService(db)
-    
+
     subscription = await revenuecat_service.process_purchase(
         user_id=current_user.user_id,
         subscriber_id=purchase_data.revenuecat_subscriber_id,
         product_id=purchase_data.product_identifier,
         platform=purchase_data.platform,
     )
-    
+
+    await db.commit()
+
     # Invalidate caches
     await CacheInvalidator.on_subscription_change(str(current_user.user_id))
-    
+
     # Get feature limits for new tier
     feature_limits = get_feature_limits(subscription.tier.value)
-    
+
     return PurchaseResponse(
         success=True,
         data={
@@ -236,10 +241,13 @@ async def purchase_subscription(
                 "started_at": subscription.started_at.isoformat(),
                 "expires_at": (
                     subscription.expires_at.isoformat()
-                    if subscription.expires_at else None
+                    if subscription.expires_at
+                    else None
                 ),
                 "auto_renew": subscription.auto_renew,
-                "platform": subscription.platform.value if subscription.platform else None,
+                "platform": (
+                    subscription.platform.value if subscription.platform else None
+                ),
                 "product_identifier": subscription.product_identifier,
             },
             "unlocked_features": feature_limits,
@@ -259,27 +267,39 @@ async def get_subscription_status(
 ):
     """
     Get current subscription status.
-    
+
     Use force_refresh=true to bypass cache and query RevenueCat directly.
+    This will sync the local subscription data with RevenueCat's latest state.
     """
     user_id_str = str(current_user.user_id)
-    
+
     # Try cache if not forcing refresh
     if not force_refresh:
-        cached = await CacheManager.get(CacheKeys.subscription_status(user_id_str))
+        cached = await CacheManager.get(
+            CacheKeys.subscription_status(user_id_str)
+        )
         if cached:
             return SubscriptionStatusResponse(success=True, data=cached)
-    
+
     subscription = current_user.subscription
-    
-    # Refresh from RevenueCat if premium and forcing refresh
+
+    # Force-refresh: sync from RevenueCat and update local DB
     if force_refresh and subscription and subscription.revenuecat_subscriber_id:
-        revenuecat_service = RevenueCatService(db)
-        subscriber_data = await revenuecat_service.get_subscriber(
-            subscription.revenuecat_subscriber_id
-        )
-        # Could update subscription here if needed
-    
+        try:
+            revenuecat_service = RevenueCatService(db)
+            subscription = await revenuecat_service.sync_subscription(subscription)
+            await db.commit()
+
+            # Invalidate stale cache after sync
+            await CacheInvalidator.on_subscription_change(user_id_str)
+        except Exception as e:
+            logger.error(
+                "Failed to sync subscription from RevenueCat for user=%s: %s",
+                user_id_str,
+                e,
+            )
+            # Continue with local data
+
     # Build response
     if subscription is None or subscription.tier == SubscriptionTier.FREE:
         response_data = {
@@ -287,7 +307,8 @@ async def get_subscription_status(
             "tier": "free",
             "started_at": (
                 current_user.created_at.isoformat()
-                if current_user.created_at else None
+                if current_user.created_at
+                else None
             ),
             "expires_at": None,
             "auto_renew": False,
@@ -304,48 +325,60 @@ async def get_subscription_status(
             "tier": subscription.tier.value,
             "started_at": (
                 subscription.started_at.isoformat()
-                if subscription.started_at else None
+                if subscription.started_at
+                else None
             ),
             "expires_at": (
                 subscription.expires_at.isoformat()
-                if subscription.expires_at else None
+                if subscription.expires_at
+                else None
             ),
             "auto_renew": subscription.auto_renew,
             "is_in_trial": subscription.status == SubscriptionStatus.TRIAL,
             "trial_end_date": (
                 subscription.trial_end_date.isoformat()
-                if subscription.trial_end_date else None
+                if subscription.trial_end_date
+                else None
             ),
             "cancelled_at": (
                 subscription.cancelled_at.isoformat()
-                if subscription.cancelled_at else None
+                if subscription.cancelled_at
+                else None
             ),
             "revenuecat_subscriber_id": subscription.revenuecat_subscriber_id,
-            "platform": subscription.platform.value if subscription.platform else None,
+            "platform": (
+                subscription.platform.value if subscription.platform else None
+            ),
             "product_identifier": subscription.product_identifier,
-            "price_paid": float(subscription.price_paid) if subscription.price_paid else None,
+            "price_paid": (
+                float(subscription.price_paid) if subscription.price_paid else None
+            ),
             "currency": subscription.currency,
             "original_purchase_date": (
                 subscription.original_purchase_date.isoformat()
-                if subscription.original_purchase_date else None
+                if subscription.original_purchase_date
+                else None
             ),
             "latest_purchase_date": (
                 subscription.latest_purchase_date.isoformat()
-                if subscription.latest_purchase_date else None
+                if subscription.latest_purchase_date
+                else None
             ),
             "store_transaction_id": subscription.store_transaction_id,
-            "billing_issues": subscription.status == SubscriptionStatus.BILLING_ISSUE,
+            "billing_issues": (
+                subscription.status == SubscriptionStatus.BILLING_ISSUE
+            ),
             "active_entitlements": subscription.revenuecat_entitlements or [],
             "feature_limits": get_feature_limits(subscription.tier.value),
         }
-    
+
     # Cache
     await CacheManager.set(
         CacheKeys.subscription_status(user_id_str),
         response_data,
         ttl=CacheManager.TTL_SHORT,
     )
-    
+
     return SubscriptionStatusResponse(success=True, data=response_data)
 
 
@@ -360,11 +393,13 @@ async def cancel_subscription(
 ):
     """
     Cancel subscription auto-renewal.
-    
+
     User retains access until expiration date.
+    Note: Actual cancellation should be done through the App Store / Play Store
+    via the RevenueCat SDK. This endpoint records the intent on our backend.
     """
     subscription = current_user.subscription
-    
+
     if subscription is None or subscription.tier == SubscriptionTier.FREE:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -373,7 +408,7 @@ async def cancel_subscription(
                 "message": "No active subscription to cancel",
             },
         )
-    
+
     if subscription.status == SubscriptionStatus.CANCELLED:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -382,25 +417,26 @@ async def cancel_subscription(
                 "message": "Subscription already cancelled",
             },
         )
-    
+
     # Update subscription
     from datetime import datetime, timezone
-    
+
     subscription.status = SubscriptionStatus.CANCELLED
     subscription.auto_renew = False
     subscription.cancelled_at = datetime.now(timezone.utc)
-    
+
     await db.flush()
-    
+    await db.commit()
+
     # Invalidate caches
     await CacheInvalidator.on_subscription_change(str(current_user.user_id))
-    
+
     # Calculate days remaining
     days_remaining = 0
     if subscription.expires_at:
         delta = subscription.expires_at.date() - date.today()
         days_remaining = max(0, delta.days)
-    
+
     return CancelResponse(
         success=True,
         data={
@@ -411,16 +447,22 @@ async def cancel_subscription(
                 "auto_renew": False,
                 "expires_at": (
                     subscription.expires_at.isoformat()
-                    if subscription.expires_at else None
+                    if subscription.expires_at
+                    else None
                 ),
                 "cancelled_at": subscription.cancelled_at.isoformat(),
                 "days_remaining": days_remaining,
             },
-            "message": f"Your subscription will remain active until {subscription.expires_at.strftime('%B %d, %Y') if subscription.expires_at else 'expiration'}. You can reactivate anytime before then.",
+            "message": (
+                f"Your subscription will remain active until "
+                f"{subscription.expires_at.strftime('%B %d, %Y') if subscription.expires_at else 'expiration'}. "
+                f"You can reactivate anytime before then."
+            ),
             "downgrade_info": {
                 "downgrade_date": (
                     subscription.expires_at.isoformat()
-                    if subscription.expires_at else None
+                    if subscription.expires_at
+                    else None
                 ),
                 "new_tier": "free",
                 "features_to_lose": [
@@ -445,24 +487,44 @@ async def restore_purchases(
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     """
-    Restore previous purchases from App Store/Play Store.
+    Restore previous purchases from App Store / Play Store.
+
+    The client should call ``Purchases.restorePurchases()`` first, then
+    call this endpoint. We sync the latest subscriber state from RevenueCat
+    and update the local subscription.
     """
-    # This would typically:
-    # 1. Call RevenueCat to restore purchases for the user
-    # 2. Update local subscription if found
-    
-    # For now, return the current subscription state
-    subscription = current_user.subscription
-    
-    if subscription is None or subscription.tier == SubscriptionTier.FREE:
+    revenuecat_service = RevenueCatService(db)
+
+    # Use the user's ID as the RevenueCat subscriber ID
+    subscriber_id = str(current_user.user_id)
+
+    # If user already has a RevenueCat subscriber ID, prefer that
+    if (
+        current_user.subscription
+        and current_user.subscription.revenuecat_subscriber_id
+    ):
+        subscriber_id = current_user.subscription.revenuecat_subscriber_id
+
+    subscription = await revenuecat_service.restore_purchases(
+        user_id=current_user.user_id,
+        subscriber_id=subscriber_id,
+        platform=restore_data.platform,
+    )
+
+    if subscription is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={
                 "code": "SUB_006",
-                "message": "No previous purchases found",
+                "message": "No previous purchases found to restore",
             },
         )
-    
+
+    await db.commit()
+
+    # Invalidate caches
+    await CacheInvalidator.on_subscription_change(str(current_user.user_id))
+
     return RestoreResponse(
         success=True,
         data={
@@ -472,13 +534,18 @@ async def restore_purchases(
                 "status": subscription.status.value,
                 "expires_at": (
                     subscription.expires_at.isoformat()
-                    if subscription.expires_at else None
+                    if subscription.expires_at
+                    else None
                 ),
                 "product_identifier": subscription.product_identifier,
                 "original_purchase_date": (
                     subscription.original_purchase_date.isoformat()
-                    if subscription.original_purchase_date else None
+                    if subscription.original_purchase_date
+                    else None
                 ),
+                "auto_renew": subscription.auto_renew,
+                "active_entitlements": subscription.revenuecat_entitlements or [],
+                "feature_limits": get_feature_limits(subscription.tier.value),
             },
         },
         message="Subscription restored successfully",

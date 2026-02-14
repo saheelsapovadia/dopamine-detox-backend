@@ -66,8 +66,25 @@ class Settings(BaseSettings):
     JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = Field(default=30)
 
     # Google OAuth
-    GOOGLE_OAUTH_CLIENT_ID: Optional[str] = Field(default=None)
+    GOOGLE_OAUTH_CLIENT_ID: Optional[str] = Field(
+        default=None,
+        description="Web/Android OAuth client ID (used as audience for Android ID tokens)",
+    )
+    GOOGLE_OAUTH_IOS_CLIENT_ID: Optional[str] = Field(
+        default=None,
+        description="iOS OAuth client ID (used as audience for iOS ID tokens)",
+    )
     GOOGLE_OAUTH_CLIENT_SECRET: Optional[str] = Field(default=None)
+
+    @property
+    def google_oauth_client_ids(self) -> list[str]:
+        """All configured Google OAuth client IDs for token audience verification."""
+        ids = []
+        if self.GOOGLE_OAUTH_CLIENT_ID:
+            ids.append(self.GOOGLE_OAUTH_CLIENT_ID)
+        if self.GOOGLE_OAUTH_IOS_CLIENT_ID:
+            ids.append(self.GOOGLE_OAUTH_IOS_CLIENT_ID)
+        return ids
 
     # RevenueCat
     REVENUECAT_API_KEY: str = Field(default="")

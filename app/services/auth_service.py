@@ -5,13 +5,18 @@ Authentication Service
 Business logic for user authentication, registration, and token management.
 """
 
+import asyncio
+import logging
 from datetime import datetime, timezone
 from typing import Optional
 import uuid
 
+from google.auth.transport import requests as google_requests
+from google.oauth2 import id_token as google_id_token
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.core.security import (
     create_tokens_for_user,
     decode_token,
@@ -21,6 +26,8 @@ from app.core.security import (
 from app.models.user import User
 from app.models.subscription import Subscription, SubscriptionTier, SubscriptionStatus
 from app.schemas.auth import UserRegister
+
+logger = logging.getLogger(__name__)
 
 
 class AuthService:
@@ -231,8 +238,82 @@ class AuthService:
         self.db.add(subscription)
 
         await self.db.flush()
-        
+
+        # Refresh to populate the selectin-loaded 'subscription' relationship
+        # so callers can access user.subscription without triggering a
+        # synchronous lazy load (which would fail in async context).
+        await self.db.refresh(user, ["subscription"])
+
         return user
+
+    async def verify_google_id_token(self, token: str) -> dict:
+        """
+        Verify a Google ID token and return the decoded user info.
+
+        Uses google-auth library to cryptographically verify the token
+        signature, expiry, issuer, and audience against configured client IDs.
+
+        The verification is CPU-bound / synchronous, so it is offloaded
+        to a thread to avoid blocking the event loop.
+
+        Args:
+            token: Raw Google ID token string from client.
+
+        Returns:
+            Dict with keys: sub, email, email_verified, name, picture, etc.
+
+        Raises:
+            ValueError: If the token is invalid, expired, or has a
+                        wrong audience / issuer.
+        """
+        client_ids = settings.google_oauth_client_ids
+
+        def _verify() -> dict:
+            """Try verification against each configured client ID."""
+            request = google_requests.Request()
+            last_error: Exception | None = None
+
+            for client_id in client_ids:
+                try:
+                    idinfo = google_id_token.verify_oauth2_token(
+                        token, request, audience=client_id,
+                        clock_skew_in_seconds=5,
+                    )
+                    # Validate issuer
+                    if idinfo.get("iss") not in (
+                        "accounts.google.com",
+                        "https://accounts.google.com",
+                    ):
+                        raise ValueError("Invalid token issuer")
+                    return idinfo
+                except ValueError as exc:
+                    last_error = exc
+                    continue
+
+            # If no client IDs matched or none are configured, try without
+            # audience check as a last resort (still verifies signature).
+            if not client_ids:
+                try:
+                    idinfo = google_id_token.verify_oauth2_token(
+                        token, request, audience=None,
+                        clock_skew_in_seconds=5,
+                    )
+                    if idinfo.get("iss") not in (
+                        "accounts.google.com",
+                        "https://accounts.google.com",
+                    ):
+                        raise ValueError("Invalid token issuer")
+                    logger.warning(
+                        "Google token verified without audience check — "
+                        "configure GOOGLE_OAUTH_CLIENT_ID for production safety"
+                    )
+                    return idinfo
+                except ValueError as exc:
+                    last_error = exc
+
+            raise last_error or ValueError("Google token verification failed")
+
+        return await asyncio.to_thread(_verify)
 
     def get_feature_limits(self, tier: str) -> dict:
         """Get feature limits for a subscription tier."""

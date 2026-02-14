@@ -110,6 +110,16 @@ class LogoutResponse(BaseModel):
     message: str = "Logged out successfully"
 
 
+class GoogleLoginRequest(BaseModel):
+    """Request schema for Google OAuth login."""
+    
+    id_token: str = Field(
+        ...,
+        min_length=1,
+        description="Google ID token obtained from client-side Google Sign-In",
+    )
+
+
 class PasswordResetRequest(BaseModel):
     """Request schema for password reset."""
     
